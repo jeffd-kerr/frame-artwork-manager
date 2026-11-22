@@ -355,18 +355,19 @@ class Handler(BaseHTTPRequestHandler):
             return {}
 
     def do_GET(self):
-        if self.path in ("/", "/index.html"):
+        path = urlparse(self.path).path
+        if path in ("/", "/index.html"):
             try:
                 with open(PAGE_PATH, "rb") as f:
                     self._send(200, f.read(), "text/html; charset=utf-8")
             except Exception:
                 self._send(500, "page not installed yet", "text/plain")
             return
-        if self.path == "/api/state":
+        if path == "/api/state":
             self._send(200, build_state())
             return
-        if self.path.startswith("/thumb/"):
-            cid = self.path.split("/")[2].split(".")[0]
+        if path.startswith("/thumb/"):
+            cid = path.split("/")[2].split(".")[0]
             if "/" in cid or ".." in cid:
                 self._send(400, {"ok": False})
                 return
@@ -463,16 +464,17 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_upload()
             return
         data = self._body()
+        path = urlparse(self.path).path
         try:
-            if self.path == "/api/add":
+            if path == "/api/add":
                 mutate_pool(data.get("ids", []), True)
                 _cache["ts"] = 0
                 self._send(200, build_state())
-            elif self.path == "/api/remove":
+            elif path == "/api/remove":
                 mutate_pool(data.get("ids", []), False)
                 _cache["ts"] = 0
                 self._send(200, build_state())
-            elif self.path == "/api/delete":
+            elif path == "/api/delete":
                 ids = data.get("ids", [])
                 tv_op("delete", ids)
                 mutate_pool(ids, False)
@@ -494,12 +496,12 @@ class Handler(BaseHTTPRequestHandler):
                 save_json(UPLOADED_PATH, uploaded)
                 _attempt_snapshot()
                 self._send(200, build_state())
-            elif self.path == "/api/label":
+            elif path == "/api/label":
                 labels = load_labels()
                 labels[data["id"]] = str(data.get("label", ""))[:120]
                 save_json(LABELS_PATH, labels)
                 self._send(200, {"ok": True})
-            elif self.path == "/api/show":
+            elif path == "/api/show":
                 r = tv_op("show", data.get("id"))
                 if r == "not_artmode":
                     _cache["ts"] = 0
@@ -508,7 +510,7 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     _attempt_snapshot()
                     self._send(200, build_state())
-            elif self.path == "/api/next":
+            elif path == "/api/next":
                 p = subprocess.run([sys.executable, ROTATE_SCRIPT, "force"],
                                    capture_output=True, text=True, timeout=180)
                 lines = (p.stdout or "").strip().splitlines()
@@ -534,7 +536,7 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     st["message"] = "Done."
                 self._send(200, st)
-            elif self.path == "/api/reorder":
+            elif path == "/api/reorder":
                 ids = data.get("ids", [])
                 rot = load_json(ROT_PATH, {})
                 pool = rot.get("pool")
@@ -547,7 +549,7 @@ class Handler(BaseHTTPRequestHandler):
                 rot["pool"] = ids
                 save_json(ROT_PATH, rot)
                 self._send(200, build_state())
-            elif self.path == "/api/settings":
+            elif path == "/api/settings":
                 rot = load_json(ROT_PATH, {})
                 if "mode" in data:
                     if data["mode"] not in ("shuffle", "ordered"):
