@@ -169,11 +169,36 @@ async def _snapshot_inner():
 async def _snapshot():
     return await asyncio.wait_for(_snapshot_inner(), 20)
 
+def _run_helper(argv, timeout):
+    """Run one TV operation in a fresh helper process (this same file).
+
+    The TV library's connections degrade over a long-lived process's
+    lifetime: after a process has made several connections, new ones
+    start failing with EHOSTUNREACH ("No route to host") even though
+    the TV is up and fresh processes connect instantly. Isolating
+    every operation in a clean process makes the app immune to that,
+    at the cost of a fraction of a second per operation. (The /api/next
+    handler already used this pattern via frame_rotate.py.)
+    """
+    env = dict(os.environ)
+    env["FRAME_DATA_DIR"] = DATA_DIR
+    p = subprocess.run([sys.executable, os.path.abspath(__file__)] + argv,
+                       capture_output=True, text=True, timeout=timeout,
+                       env=env)
+    lines = (p.stdout or "").strip().splitlines()
+    if not lines:
+        raise RuntimeError("TV helper failed (exit %s): %s"
+                           % (p.returncode, (p.stderr or "")[-300:]))
+    res = json.loads(lines[-1])
+    if not res.get("ok"):
+        raise RuntimeError(res.get("error") or "TV operation failed")
+    return res.get("result")
+
 def _attempt_snapshot():
     for i in range(2):
         try:
             with tv_lock:
-                snap = asyncio.run(_snapshot())
+                snap = _run_helper(["--snapshot"], timeout=60)
             _cache["snap"], _cache["ts"], _cache["live"] = \
                 snap, time.time(), True
             save_json(SNAP_PATH, snap)
@@ -239,7 +264,15 @@ async def _tv_op(op, arg):
 
 def tv_op(op, arg):
     with tv_lock:
-        return asyncio.run(_tv_op(op, arg))
+        if op == "thumbs":
+            import base64
+            blobs = _run_helper(["--tv-op", "thumbs", json.dumps(arg)],
+                                timeout=180)
+            return [base64.b64decode(b) if b else None
+                    for b in (blobs or [])]
+        timeout = 300 if op == "upload" else 120
+        return _run_helper(["--tv-op", op, json.dumps(arg)],
+                           timeout=timeout)
 
 def thumb_path(cid):
     return os.path.join(THUMB_DIR, cid + ".jpg")
@@ -585,7 +618,34 @@ def prime_thumbs():
     except Exception:
         pass
 
+def _helper_main(argv):
+    """Entry point for the per-operation helper processes (see
+    _run_helper). Performs exactly one TV operation and prints one
+    JSON line: {"ok": true, "result": ...} or {"ok": false, ...}."""
+    import base64
+    try:
+        if argv[0] == "--snapshot":
+            print(json.dumps({"ok": True,
+                              "result": asyncio.run(_snapshot())}))
+            return 0
+        if argv[0] == "--tv-op":
+            op = argv[1]
+            arg = json.loads(argv[2]) if len(argv) > 2 else None
+            r = asyncio.run(_tv_op(op, arg))
+            if op == "thumbs":
+                r = [base64.b64encode(b).decode() if b else None
+                     for b in (r or [])]
+            print(json.dumps({"ok": True, "result": r}))
+            return 0
+    except Exception as e:
+        print(json.dumps({"ok": False,
+                          "error": str(e) or repr(e)}))
+        return 0
+    return 2
+
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] in ("--snapshot", "--tv-op"):
+        sys.exit(_helper_main(sys.argv[1:]))
     if not HOST:
         raise SystemExit(
             "No TV configured. Create %s with your TV's address "
