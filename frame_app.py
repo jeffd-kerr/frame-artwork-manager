@@ -254,7 +254,17 @@ async def _tv_op(op, arg):
         if op == "upload":
             return await art.upload(arg, matte="none")
         if op == "thumbs":
-            return await art.get_thumbnail(arg)
+            r = await art.get_thumbnail(arg)
+            ids = arg if isinstance(arg, list) else [arg]
+            if isinstance(r, dict):
+                by_id = r
+            elif isinstance(r, (bytes, bytearray)):
+                by_id = {ids[0]: bytes(r)} if ids else {}
+            else:
+                by_id = {t.get("content_id"):
+                         t.get("image_binary") or t.get("data")
+                         for t in (r or []) if isinstance(t, dict)}
+            return [by_id.get(cid) for cid in ids]
         return None
     finally:
         try:
