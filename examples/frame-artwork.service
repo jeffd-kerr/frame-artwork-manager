@@ -1,0 +1,22 @@
+# Frame Artwork Manager web app — systemd unit.
+#
+# Adjust the paths, then:
+#   sudo cp frame-artwork.service /etc/systemd/system/
+#   sudo systemctl enable --now frame-artwork.service
+# The page is then served on port 8099 (or your config's "port").
+
+[Unit]
+Description=Frame Artwork Manager web app
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/frame-artwork-manager
+ExecStart=/opt/frame-artwork-manager/.venv/bin/python /opt/frame-artwork-manager/frame_app.py
+Restart=on-failure
+# Optional: point at a data directory other than ~/.frame-artwork
+# Environment=FRAME_DATA_DIR=/var/lib/frame-artwork
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+# Runs the rotation tick every minute. The script throttles itself to
+# the interval set in the web app, so a one-minute cadence is correct
+# for any setting.
+
+[Unit]
+Description=Run the Frame artwork rotation every minute
+
+[Timer]
+OnCalendar=minutely
+Persistent=true
+
+[Install]
+WantedBy=timers.target

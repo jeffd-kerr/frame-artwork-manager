@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frame Artwork</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         background: #f4f1ec; color: #23201c; }
+  #topbar { position: sticky; top: 0; z-index: 20; }
+  header { background: #23201c; color: #f4f1ec; padding: 14px 22px;
+           display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+  header h1 { font-size: 19px; margin: 0; font-weight: 600; letter-spacing: .02em; }
+  .now { display: flex; align-items: center; gap: 12px; min-width: 260px; }
+  .now img { width: 84px; height: 48px; object-fit: cover; border-radius: 4px; background: #444; }
+  .now .lbl { font-size: 14px; font-weight: 600; }
+  .now .sub { font-size: 12px; opacity: .75; }
+  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-left: auto; }
+  .controls label { font-size: 13px; opacity: .85; }
+  .controls input[type=number] { width: 58px; padding: 5px 6px; border-radius: 5px;
+           border: 1px solid #555; background: #33302b; color: #f4f1ec; font-size: 14px; }
+  button { font-size: 13px; padding: 6px 12px; border-radius: 6px; border: 1px solid #b9b2a6;
+           background: #fffdf9; color: #23201c; cursor: pointer; }
+  button:hover:not(:disabled) { background: #efe9dd; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: #2f5d3a; border-color: #2f5d3a; color: #fff; }
+  button.primary:hover:not(:disabled) { background: #285030; }
+  button.danger { background: #7a2e2a; border-color: #7a2e2a; color: #fff; }
+  button.danger:hover:not(:disabled) { background: #662622; }
+  button.toggle-on { background: #2f5d3a; border-color: #2f5d3a; color: #fff; }
+  #editorOverlay { display: none; position: fixed; inset: 0; z-index: 50;
+          background: rgba(35,32,28,.55); align-items: center; justify-content: center; }
+  #editorOverlay.open { display: flex; }
+  #editor { background: #fffdf9; border-radius: 12px; padding: 20px 22px; width: 660px;
+          max-width: 94vw; max-height: 92vh; overflow: auto;
+          box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+  .ed-head { display: flex; justify-content: space-between; align-items: baseline; }
+  #edTitle { font-size: 17px; font-weight: 700; }
+  #edCount { color: #8a8172; font-size: 13px; }
+  .ed-name { color: #8a8172; font-size: 13px; margin: 2px 0 14px; word-break: break-all; }
+  #edStage { position: relative; width: 100%; aspect-ratio: 16/9; background: #faf8f2;
+          border-radius: 8px; overflow: hidden; border: 1px solid #ddd5c6; }
+  #edWindow { position: absolute; overflow: hidden; }
+  #edWindow.crop { cursor: grab; }
+  #edWindow.crop:active { cursor: grabbing; }
+  #edWindow.keyline { outline: 3px solid #ffffff; }
+  #edWindow.shadowed { box-shadow: 0 10px 22px rgba(20,18,15,.35); }
+  #edImg { position: absolute; max-width: none; user-select: none; -webkit-user-drag: none; }
+  #edImg.contain { box-shadow: 0 12px 24px rgba(20,18,15,.35); }
+  .ed-styles { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .ed-styles button.active { background: #2f5d3a; border-color: #2f5d3a; color: #fff; }
+  .ed-colors { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
+  .ed-colors .sw { width: 26px; height: 26px; border-radius: 50%;
+          border: 2px solid rgba(0,0,0,.15); padding: 0; cursor: pointer; }
+  .ed-colors .sw.active { box-shadow: 0 0 0 2px #fffdf9, 0 0 0 4px #2f5d3a; }
+  .ed-colors .swname { font-size: 13px; color: #8a8172; margin-left: 4px; }
+  .ed-zoom { display: flex; gap: 10px; align-items: center; margin-top: 12px; font-size: 13px; }
+  .ed-zoom input { flex: 0 0 200px; }
+  .ed-hint { color: #8a8172; }
+  .ed-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .ed-status { color: #8a8172; font-size: 13px; min-height: 16px; margin-top: 8px;
+          text-align: right; }
+  #msgbar { display: none; background: #fdf3d8; color: #5a4a12; font-size: 13px;
+          padding: 7px 22px; border-bottom: 1px solid #e5d9ae; }
+  #msgbar.show { display: block; }
+  #tvbar { display: none; background: #f6e3e0; color: #6e352c; font-size: 13px;
+          padding: 7px 22px; border-bottom: 1px solid #e3c4bd; }
+  #tvbar.show { display: block; }
+  main { padding: 18px 22px 30px; max-width: 1460px; margin: 0 auto; }
+  section.zone { background: #fffdf9; border: 1px solid #ddd5c7; border-radius: 10px;
+           padding: 14px 16px 18px; margin-bottom: 22px; }
+  section.zone.dragover { outline: 3px dashed #2f5d3a; outline-offset: -6px; }
+  .zonehead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .zonehead h2 { font-size: 16px; margin: 0; }
+  .zonehead .count { color: #8a8172; font-size: 13px; }
+  .zonehead .actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .zonehead .selinfo { font-size: 13px; color: #8a8172; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 14px; }
+  .card { border: 2px solid #e3dccd; border-radius: 8px; padding: 8px; background: #fff;
+          cursor: pointer; position: relative; }
+  .card:hover { border-color: #c9bfa9; }
+  .card.selected { border-color: #2f5d3a; background: #eef4ee; }
+  .card img { width: 100%; height: 118px; object-fit: cover; border-radius: 4px; background: #e8e2d4; display: block; }
+  .card .badge { position: absolute; top: 14px; left: 14px; background: rgba(35,32,28,.85);
+          color: #fff; font-size: 11px; padding: 2px 7px; border-radius: 9px; }
+  .card .badge-num { position: absolute; top: 14px; right: 14px; background: rgba(47,93,58,.9);
+          color: #fff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 9px; }
+  .card.droptarget { border-color: #2f5d3a; box-shadow: inset 0 0 0 2px #2f5d3a; }
+  .modebar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+          margin-bottom: 12px; font-size: 13px; }
+  .modebar button.active { background: #2f5d3a; border-color: #2f5d3a; color: #fff; }
+  .modebar .hint { color: #8a8172; }
+  .card .label { font-size: 13px; font-weight: 600; margin-top: 8px; line-height: 1.3;
+          min-height: 17px; word-break: break-word; }
+  .card .label:hover { text-decoration: underline dotted; }
+  .card .labelinput { width: 100%; font-size: 13px; padding: 3px 5px; margin-top: 6px; }
+  .card .row { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
+  .card .row button { padding: 4px 9px; font-size: 12px; }
+  .card .nobackup { font-size: 11px; color: #a08c5a; }
+  .empty { color: #8a8172; font-size: 14px; padding: 12px 4px; }
+  footer { color: #8a8172; font-size: 12.5px; text-align: center; padding: 0 20px 26px; }
+  #modal { position: fixed; inset: 0; background: rgba(20,18,15,.55); display: none;
+           align-items: center; justify-content: center; z-index: 60; }
+  #modal .box { background: #fffdf9; border-radius: 10px; padding: 22px 24px; max-width: 480px;
+           width: calc(100% - 40px); }
+  #modal h3 { margin: 0 0 10px; font-size: 16px; }
+  #modal p { font-size: 14px; line-height: 1.45; }
+  #modal ul { font-size: 13px; max-height: 160px; overflow: auto; padding-left: 18px; }
+  #modal .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div id="topbar">
+<header>
+  <h1>Frame Artwork</h1>
+  <div class="now">
+    <img id="nowImg" alt="">
+    <div>
+      <div class="lbl" id="nowLabel">Loading…</div>
+      <div class="sub" id="nowSub"></div>
+    </div>
+  </div>
+  <div class="controls">
+    <button id="toggleBtn">Rotation</button>
+    <label for="interval">Change every</label>
+    <input type="number" id="interval" min="1" max="60" step="1">
+    <label>min</label>
+    <button id="applyInterval">Apply</button>
+    <button id="nextBtn" class="primary">Next piece</button>
+  </div>
+</header>
+<div id="msgbar"><span id="msg"></span></div>
+<div id="tvbar">The TV isn't responding — it may be off or asleep. The lists below are from the last time it answered, and they'll refresh on their own when it's back.</div>
+</div>
+<main>
+  <section class="zone" id="zoneIn">
+    <div class="zonehead">
+      <h2>In the slideshow</h2><span class="count" id="countIn"></span>
+      <div class="actions">
+        <span class="selinfo" id="selInInfo"></span>
+        <button id="removeBtn" disabled>Remove from slideshow</button>
+        <button id="deleteInBtn" class="danger" disabled>Delete selected</button>
+      </div>
+    </div>
+    <div class="modebar">
+      <span>Rotation order:</span>
+      <button id="modeShuffle">Shuffle</button>
+      <button id="modeOrdered">Ordered</button>
+      <span class="hint" id="modeHint"></span>
+    </div>
+    <div class="grid" id="gridIn"></div>
+    <div class="empty" id="emptyIn" style="display:none">Nothing in the slideshow yet. Add pieces from below.</div>
+  </section>
+  <section class="zone" id="zoneOut">
+    <div class="zonehead">
+      <h2>Not in the slideshow</h2><span class="count" id="countOut"></span>
+      <div class="actions">
+        <span class="selinfo" id="selOutInfo"></span>
+        <button id="uploadBtn">Upload photos</button>
+        <input type="file" id="fileInput" accept="image/*" multiple style="display:none">
+        <button id="addBtn" class="primary" disabled>Add to slideshow</button>
+        <button id="deleteOutBtn" class="danger" disabled>Delete selected</button>
+      </div>
+    </div>
+    <div class="grid" id="gridOut"></div>
+    <div class="empty" id="emptyOut" style="display:none">Everything on the TV is in the slideshow.</div>
+  </section>
+</main>
+<footer>Deleting a piece removes it from the TV permanently.</footer>
+
+<div id="modal">
+  <div class="box">
+    <h3>Delete permanently?</h3>
+    <p id="modalText"></p>
+    <ul id="modalList"></ul>
+    <div class="row">
+      <button id="modalCancel">Cancel</button>
+      <button id="modalConfirm" class="danger">Delete permanently</button>
+    </div>
+  </div>
+</div>
+
+<div id="editorOverlay">
+  <div id="editor">
+    <div class="ed-head">
+      <span id="edTitle">Add photo</span>
+      <span id="edCount"></span>
+    </div>
+    <div class="ed-name" id="edName"></div>
+    <div id="edStage">
+      <div id="edWindow"><img id="edImg" alt="" draggable="false"></div>
+    </div>
+    <div class="ed-styles" id="edStyles">
+      <button data-style="fill">Fill Screen</button>
+      <button data-style="original">Original Photo</button>
+      <button data-style="classic">Classic Mat</button>
+      <button data-style="modern">Modern Mat</button>
+    </div>
+    <div class="ed-colors" id="edColors"></div>
+    <div class="ed-zoom" id="edZoomRow">
+      <span>Zoom</span>
+      <input type="range" id="edZoom" min="1" max="3" step="0.01" value="1">
+      <span class="ed-hint">Drag the photo to position it</span>
+    </div>
+    <div class="ed-actions">
+      <button id="edCancel">Cancel</button>
+      <button id="edSkip">Skip photo</button>
+      <button id="edOk" class="primary">Upload to Frame</button>
+    </div>
+    <div class="ed-status" id="edStatus"></div>
+  </div>
+</div>
+
+<script>
+let state = null;
+let busy = false;
+let editing = false;
+let modalOpen = false;
+const sel = { in: new Set(), out: new Set() };
+let pendingDelete = null;
+
+const $ = id => document.getElementById(id);
+
+let msgTimer = null;
+function say(msg) {
+  const bar = $("msgbar");
+  $("msg").textContent = msg || "";
+  bar.className = msg ? "show" : "";
+  if (msgTimer) clearTimeout(msgTimer);
+  if (msg) msgTimer = setTimeout(() => { bar.className = ""; $("msg").textContent = ""; }, 10000);
+}
+
+async function api(path, data) {
+  const opt = data ? { method: "POST", headers: {"Content-Type": "application/json"},
+                       body: JSON.stringify(data) } : {};
+  const r = await fetch(path, opt);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+  return j;
+}
+
+async function load(keepMsg) {
+  try {
+    state = await api("/api/state");
+    render();
+    if (!keepMsg) say("");
+  } catch (e) { say("Could not load: " + e.message); }
+}
+
+$("nowImg").addEventListener("error", () => { $("nowImg").style.visibility = "hidden"; });
+$("nowImg").addEventListener("load", () => { $("nowImg").style.visibility = "visible"; });
+
+function render() {
+  if (!state) return;
+  // header
+  const cur = [...state.in, ...state.out].find(i => i.id === state.current_id);
+  $("nowImg").src = state.current_id ? "/thumb/" + state.current_id + ".jpg" : "";
+  $("nowLabel").textContent = state.artmode === "on"
+      ? (cur ? (cur.label || "Untitled") : "Art Mode")
+      : "Not in Art Mode";
+  $("nowSub").textContent = state.artmode === "on"
+      ? "On the TV now"
+      : "The TV is being watched or is off — art controls will wait.";
+  const t = $("toggleBtn");
+  t.textContent = state.enabled ? "Rotation: On" : "Rotation: Paused";
+  t.className = state.enabled ? "toggle-on" : "";
+  $("modeShuffle").className = state.mode === "shuffle" ? "active" : "";
+  $("modeOrdered").className = state.mode === "ordered" ? "active" : "";
+  $("modeHint").textContent = state.mode === "ordered"
+      ? "Rotation plays in this order — drag pieces to rearrange."
+      : "Pieces play in random order — the arrangement here does not affect rotation.";
+  if (document.activeElement !== $("interval")) $("interval").value = state.interval_min;
+  // zones
+  $("countIn").textContent = state.in.length + (state.in.length === 1 ? " piece" : " pieces");
+  $("countOut").textContent = state.out.length + (state.out.length === 1 ? " piece" : " pieces");
+  fillGrid($("gridIn"), state.in, "in");
+  fillGrid($("gridOut"), state.out, "out");
+  $("tvbar").className = state.tv_reachable ? "" : "show";
+  $("emptyIn").textContent = state.tv_reachable
+      ? "Nothing in the slideshow yet. Add pieces from below."
+      : "Can't reach the TV right now.";
+  $("emptyOut").textContent = state.tv_reachable
+      ? "Everything on the TV is in the slideshow."
+      : "Can't reach the TV right now.";
+  $("emptyIn").style.display = state.in.length ? "none" : "block";
+  $("emptyOut").style.display = state.out.length ? "none" : "block";
+  updateActions();
+}
+
+function fillGrid(grid, items, zone) {
+  grid.innerHTML = "";
+  items.forEach((item, idx) => {
+    const card = document.createElement("div");
+    card.className = "card" + (sel[zone].has(item.id) ? " selected" : "");
+    card.draggable = true;
+    const img = document.createElement("img");
+    img.src = "/thumb/" + item.id + ".jpg";
+    img.alt = item.label || item.id;
+    img.loading = "lazy";
+    card.appendChild(img);
+    if (item.id === state.current_id) {
+      const b = document.createElement("span");
+      b.className = "badge"; b.textContent = "On TV now";
+      card.appendChild(b);
+    }
+    if (zone === "in" && state.mode === "ordered") {
+      const n = document.createElement("span");
+      n.className = "badge-num"; n.textContent = idx + 1;
+      card.appendChild(n);
+    }
+    const lbl = document.createElement("div");
+    lbl.className = "label";
+    lbl.textContent = item.label || "Untitled";
+    lbl.title = "Click to rename";
+    lbl.addEventListener("click", ev => { ev.stopPropagation(); editLabel(lbl, item); });
+    card.appendChild(lbl);
+    const row = document.createElement("div");
+    row.className = "row";
+    const show = document.createElement("button");
+    show.textContent = "Show on TV";
+    show.addEventListener("click", ev => { ev.stopPropagation(); showNow(item.id); });
+    row.appendChild(show);
+    if (!item.backup) {
+      const nb = document.createElement("span");
+      nb.className = "nobackup"; nb.textContent = "no Pi backup";
+      row.appendChild(nb);
+    }
+    card.appendChild(row);
+    card.addEventListener("click", () => {
+      if (sel[zone].has(item.id)) sel[zone].delete(item.id); else sel[zone].add(item.id);
+      card.classList.toggle("selected");
+      updateActions();
+    });
+    card.addEventListener("dragstart", ev => {
+      const ids = sel[zone].has(item.id) ? [...sel[zone]] : [item.id];
+      ev.dataTransfer.setData("text/plain", JSON.stringify({ ids, from: zone }));
+      ev.dataTransfer.effectAllowed = "move";
+    });
+    if (zone === "in") {
+      card.addEventListener("dragover", ev => {
+        if (state && state.mode === "ordered") {
+          ev.preventDefault(); ev.stopPropagation();
+          card.classList.add("droptarget");
+        }
+      });
+      card.addEventListener("dragleave", () => card.classList.remove("droptarget"));
+      card.addEventListener("drop", ev => {
+        if (!(state && state.mode === "ordered")) return;
+        ev.preventDefault(); ev.stopPropagation();
+        card.classList.remove("droptarget");
+        try {
+          const d = JSON.parse(ev.dataTransfer.getData("text/plain"));
+          insertAt(d.ids, d.from, item.id);
+        } catch (e) { /* ignore */ }
+      });
+    }
+    grid.appendChild(card);
+  });
+}
+
+function updateActions() {
+  $("removeBtn").disabled = busy || sel.in.size === 0;
+  $("deleteInBtn").disabled = busy || sel.in.size === 0;
+  $("addBtn").disabled = busy || sel.out.size === 0;
+  $("deleteOutBtn").disabled = busy || sel.out.size === 0;
+  $("uploadBtn").disabled = busy;
+  $("selInInfo").textContent = sel.in.size ? sel.in.size + " selected" : "";
+  $("selOutInfo").textContent = sel.out.size ? sel.out.size + " selected" : "";
+}
+
+function editLabel(lblEl, item) {
+  if (editing) return;
+  editing = true;
+  const input = document.createElement("input");
+  input.className = "labelinput";
+  input.value = item.label || "";
+  input.placeholder = item.id;
+  lblEl.replaceWith(input);
+  input.focus(); input.select();
+  const done = async save => {
+    editing = false;
+    if (save && input.value.trim() !== (item.label || "")) {
+      try { await api("/api/label", { id: item.id, label: input.value.trim() }); item.label = input.value.trim(); }
+      catch (e) { say("Rename failed: " + e.message); }
+    }
+    render();
+  };
+  input.addEventListener("keydown", ev => {
+    if (ev.key === "Enter") done(true);
+    if (ev.key === "Escape") done(false);
+    ev.stopPropagation();
+  });
+  input.addEventListener("blur", () => done(true));
+  input.addEventListener("click", ev => ev.stopPropagation());
+}
+
+async function showNow(id) {
+  if (busy) return; busy = true; updateActions(); say("Putting it on the TV…");
+  try {
+    const r = await api("/api/show", { id });
+    if (r.ok === false) { say(r.error || "Could not show it."); }
+    else { state = r; render(); say("On the TV now."); }
+  } catch (e) { say("Show failed: " + e.message); }
+  busy = false; updateActions();
+}
+
+async function move(ids, add) {
+  if (busy || !ids.length) return; busy = true; updateActions(); say("Updating the slideshow…");
+  try {
+    state = await api(add ? "/api/add" : "/api/remove", { ids });
+    sel.in.clear(); sel.out.clear();
+    render(); say(add ? "Added to the slideshow." : "Removed from the slideshow.");
+  } catch (e) { say("Update failed: " + e.message); }
+  busy = false; updateActions();
+}
+
+async function insertAt(draggedIds, from, targetId) {
+  if (busy || !state) return;
+  const cur = state.in.map(i => i.id);
+  const dragOrdered = from === "in" ? cur.filter(id => draggedIds.includes(id)) : draggedIds;
+  const base = cur.filter(id => !draggedIds.includes(id));
+  let idx = targetId ? base.indexOf(targetId) : base.length;
+  if (idx < 0) idx = base.length;
+  const order = [...base.slice(0, idx), ...dragOrdered, ...base.slice(idx)];
+  busy = true; updateActions(); say("Reordering…");
+  try {
+    if (from === "out") await api("/api/add", { ids: draggedIds });
+    state = await api("/api/reorder", { ids: order });
+    sel.in.clear(); sel.out.clear();
+    render(); say("Order updated.");
+  } catch (e) { say("Reorder failed: " + e.message); await load(true); }
+  busy = false; updateActions();
+}
+
+async function setMode(m) {
+  if (busy || !state || state.mode === m) return;
+  busy = true; updateActions();
+  try {
+    const r = await api("/api/settings", { mode: m });
+    state.mode = r.mode || m;
+    render();
+  } catch (e) { say("Could not change mode: " + e.message); }
+  busy = false; updateActions();
+}
+
+function askDelete(ids, zoneItems) {
+  pendingDelete = ids;
+  modalOpen = true;
+  const names = ids.map(id => {
+    const it = zoneItems.find(i => i.id === id);
+    return (it && it.label) ? it.label : id;
+  });
+  $("modalText").textContent = "This deletes " + (ids.length === 1 ? "this piece" : "these " + ids.length + " pieces")
+    + " from the TV itself. It is permanent and cannot be undone from here.";
+  const ul = $("modalList"); ul.innerHTML = "";
+  for (const n of names) { const li = document.createElement("li"); li.textContent = n; ul.appendChild(li); }
+  $("modal").style.display = "flex";
+}
+
+$("modalCancel").addEventListener("click", () => { modalOpen = false; pendingDelete = null; $("modal").style.display = "none"; });
+$("modalConfirm").addEventListener("click", async () => {
+  const ids = pendingDelete;
+  modalOpen = false; pendingDelete = null; $("modal").style.display = "none";
+  if (!ids || busy) return; busy = true; updateActions(); say("Deleting…");
+  try {
+    state = await api("/api/delete", { ids });
+    sel.in.clear(); sel.out.clear();
+    render(); say("Deleted from the TV.");
+  } catch (e) { say("Delete failed: " + e.message); await load(true); }
+  busy = false; updateActions();
+});
+
+$("removeBtn").addEventListener("click", () => move([...sel.in], false));
+$("addBtn").addEventListener("click", () => move([...sel.out], true));
+$("deleteInBtn").addEventListener("click", () => askDelete([...sel.in], state.in));
+$("deleteOutBtn").addEventListener("click", () => askDelete([...sel.out], state.out));
+
+$("nextBtn").addEventListener("click", async () => {
+  if (busy) return; busy = true; updateActions(); say("Rotating…");
+  try {
+    state = await api("/api/next", {});
+    render();
+    say(state.message || "Rotated.");
+  } catch (e) { say("Rotate failed: " + e.message); }
+  busy = false; updateActions();
+});
+$("toggleBtn").addEventListener("click", async () => {
+  if (busy || !state) return; busy = true; updateActions();
+  try {
+    const r = await api("/api/settings", { enabled: !state.enabled });
+    state.enabled = r.enabled; render();
+    say(r.enabled ? "Rotation is on." : "Rotation paused — the current piece will stay up.");
+  } catch (e) { say("Toggle failed: " + e.message); }
+  busy = false; updateActions();
+});
+$("applyInterval").addEventListener("click", async () => {
+  const v = Number($("interval").value);
+  if (!Number.isInteger(v) || v < 1 || v > 60) { say("Interval must be a whole number of minutes, from 1 to 60."); return; }
+  if (busy) return; busy = true; updateActions();
+  try {
+    await api("/api/settings", { interval_min: v });
+    state.interval_min = v; render();
+    say("Slideshow will change every " + v + " minute" + (v === 1 ? "" : "s") + ".");
+  } catch (e) { say("Could not set interval: " + e.message); }
+  busy = false; updateActions();
+});
+
+for (const [zoneEl, target] of [[$("zoneIn"), "in"], [$("zoneOut"), "out"]]) {
+  zoneEl.addEventListener("dragover", ev => { ev.preventDefault(); zoneEl.classList.add("dragover"); });
+  zoneEl.addEventListener("dragleave", () => zoneEl.classList.remove("dragover"));
+  zoneEl.addEventListener("drop", ev => {
+    ev.preventDefault(); zoneEl.classList.remove("dragover");
+    try {
+      const d = JSON.parse(ev.dataTransfer.getData("text/plain"));
+      if (d.from !== target) move(d.ids, target === "in");
+      else if (target === "in" && state && state.mode === "ordered") insertAt(d.ids, "in", null);
+    } catch (e) { /* ignore */ }
+  });
+}
+
+$("modeShuffle").addEventListener("click", () => setMode("shuffle"));
+$("modeOrdered").addEventListener("click", () => setMode("ordered"));
+
+$("uploadBtn").addEventListener("click", () => $("fileInput").click());
+
+let edQueue = [], edIdx = 0;
+let edUploaded = 0, edSkipped = 0, edUrl = null;
+let edStyle = "original", edColor = "FAF8F2";
+let edNat = { w: 0, h: 0 };
+let edZoom = 1, edOX = 0, edOY = 0;
+
+const MAT_COLORS = [
+  ["Warm White", "FAF8F2"], ["Cream", "E9E2D0"], ["Light Gray", "D8D8D8"],
+  ["Gray", "8C8C8C"], ["Black", "212121"], ["Navy", "25303E"],
+  ["Slate Green", "5A6B62"], ["Teal", "7FBFC7"], ["Gold", "E0B34C"],
+  ["Tan", "B39B77"], ["Rust", "CE6A45"], ["Purple", "8E5B8F"],
+  ["Burgundy", "7A2E35"]
+];
+const swWrap = $("edColors");
+for (const [nm, hex] of MAT_COLORS) {
+  const b = document.createElement("button");
+  b.className = "sw"; b.title = nm;
+  b.dataset.hex = hex; b.dataset.name = nm;
+  b.style.background = "#" + hex;
+  b.addEventListener("click", () => { edColor = hex; markSwatches(); layoutEditor(); });
+  swWrap.appendChild(b);
+}
+const swName = document.createElement("span");
+swName.className = "swname";
+swWrap.appendChild(swName);
+
+function markSwatches() {
+  for (const b of swWrap.querySelectorAll(".sw"))
+    b.className = "sw" + (b.dataset.hex === edColor ? " active" : "");
+  const found = MAT_COLORS.find(c => c[1] === edColor);
+  swName.textContent = found ? found[0] : "";
+}
+
+function markStyleButtons() {
+  for (const b of $("edStyles").querySelectorAll("button"))
+    b.className = b.dataset.style === edStyle ? "active" : "";
+}
+for (const b of $("edStyles").querySelectorAll("button"))
+  b.addEventListener("click", () => {
+    edStyle = b.dataset.style;
+    markStyleButtons(); resetCrop(); layoutEditor();
+  });
+
+$("fileInput").addEventListener("change", ev => {
+  const files = [...ev.target.files];
+  ev.target.value = "";
+  if (!files.length || busy) return;
+  edQueue = files; edIdx = 0; edUploaded = 0; edSkipped = 0;
+  busy = true; updateActions();
+  openEditor();
+});
+
+function openEditor() {
+  const f = edQueue[edIdx];
+  if (edUrl) URL.revokeObjectURL(edUrl);
+  edUrl = URL.createObjectURL(f);
+  $("edName").textContent = f.name;
+  $("edCount").textContent = edQueue.length > 1
+      ? "Photo " + (edIdx + 1) + " of " + edQueue.length : "";
+  $("edStatus").textContent = "";
+  edNat = { w: 0, h: 0 };
+  markStyleButtons(); markSwatches();
+  $("editorOverlay").className = "open";
+  const img = $("edImg");
+  img.onload = () => {
+    edNat = { w: img.naturalWidth, h: img.naturalHeight };
+    resetCrop(); layoutEditor();
+  };
+  img.src = edUrl;
+}
+
+function stageRect() {
+  const s = $("edStage");
+  return { w: s.clientWidth, h: s.clientHeight };
+}
+function winRect() {
+  const st = stageRect();
+  if (edStyle === "classic" || edStyle === "modern") {
+    // even physical margin on all sides: 105 px of the 3840-wide canvas
+    const m = st.w * (105 / 3840);
+    return { x: m, y: m, w: st.w - 2 * m, h: st.h - 2 * m };
+  }
+  return { x: 0, y: 0, w: st.w, h: st.h };
+}
+function coverScale() {
+  const w = winRect();
+  return Math.max(w.w / edNat.w, w.h / edNat.h);
+}
+function resetCrop() {
+  edZoom = 1;
+  $("edZoom").value = 1;
+  if (edNat.w) {
+    const w = winRect(), s = coverScale();
+    edOX = (w.w - edNat.w * s) / 2;
+    edOY = (w.h - edNat.h * s) / 2;
+  }
+}
+function clampCrop() {
+  const w = winRect(), s = coverScale() * edZoom;
+  edOX = Math.min(0, Math.max(w.w - edNat.w * s, edOX));
+  edOY = Math.min(0, Math.max(w.h - edNat.h * s, edOY));
+}
+
+function layoutEditor() {
+  const w = winRect(), win = $("edWindow"), img = $("edImg");
+  $("edStage").style.background = edStyle === "fill" ? "#111" : "#" + edColor;
+  win.style.left = w.x + "px"; win.style.top = w.y + "px";
+  win.style.width = w.w + "px"; win.style.height = w.h + "px";
+  win.className = edStyle === "classic" ? "keyline"
+    : edStyle === "modern" ? "shadowed" : "";
+  if (edStyle !== "original") win.classList.add("crop");
+  win.style.overflow = edStyle === "original" ? "visible" : "hidden";
+  if (edNat.w) {
+    if (edStyle === "original") {
+      const s = Math.min(w.w * 0.88 / edNat.w, w.h * 0.88 / edNat.h);
+      img.style.width = (edNat.w * s) + "px";
+      img.style.height = (edNat.h * s) + "px";
+      img.style.left = ((w.w - edNat.w * s) / 2) + "px";
+      img.style.top = ((w.h - edNat.h * s) / 2) + "px";
+      img.className = "contain";
+    } else {
+      clampCrop();
+      const s = coverScale() * edZoom;
+      img.style.width = (edNat.w * s) + "px";
+      img.style.height = (edNat.h * s) + "px";
+      img.style.left = edOX + "px";
+      img.style.top = edOY + "px";
+      img.className = "";
+    }
+  }
+  $("edColors").style.display = edStyle === "fill" ? "none" : "flex";
+  $("edZoomRow").style.display = edStyle === "original" ? "none" : "flex";
+}
+
+$("edZoom").addEventListener("input", ev => {
+  if (!edNat.w) return;
+  const w = winRect(), old = coverScale() * edZoom;
+  const cx = (w.w / 2 - edOX) / old, cy = (w.h / 2 - edOY) / old;
+  edZoom = parseFloat(ev.target.value);
+  const s = coverScale() * edZoom;
+  edOX = w.w / 2 - cx * s;
+  edOY = w.h / 2 - cy * s;
+  layoutEditor();
+});
+
+let edDrag = null;
+$("edWindow").addEventListener("pointerdown", ev => {
+  if (edStyle === "original") return;
+  edDrag = { x: ev.clientX, y: ev.clientY, ox: edOX, oy: edOY };
+  $("edWindow").setPointerCapture(ev.pointerId);
+});
+$("edWindow").addEventListener("pointermove", ev => {
+  if (!edDrag) return;
+  edOX = edDrag.ox + (ev.clientX - edDrag.x);
+  edOY = edDrag.oy + (ev.clientY - edDrag.y);
+  layoutEditor();
+});
+$("edWindow").addEventListener("pointerup", () => { edDrag = null; });
+$("edWindow").addEventListener("pointercancel", () => { edDrag = null; });
+
+function closeEditor(summary) {
+  $("editorOverlay").className = "";
+  if (edUrl) { URL.revokeObjectURL(edUrl); edUrl = null; }
+  edQueue = [];
+  busy = false; updateActions();
+  if (state) render();
+  if (summary) say(summary);
+}
+
+function edAdvance() {
+  edIdx++;
+  if (edIdx < edQueue.length) { openEditor(); return; }
+  const n = edUploaded, s = edSkipped;
+  closeEditor(n || s
+      ? "Uploaded " + n + (n === 1 ? " photo" : " photos")
+        + (s ? ", skipped " + s : "")
+        + " — new pieces are below, outside the slideshow."
+      : "");
+}
+
+function edSetButtons(on) {
+  $("edOk").disabled = !on;
+  $("edSkip").disabled = !on;
+  $("edCancel").disabled = !on;
+}
+
+$("edOk").addEventListener("click", async () => {
+  const f = edQueue[edIdx];
+  if (!f) return;
+  edSetButtons(false);
+  $("edStatus").textContent = "Uploading to the TV…";
+  try {
+    let url = "/api/upload?name=" + encodeURIComponent(f.name)
+        + "&style=" + edStyle;
+    if (edStyle !== "fill") url += "&color=" + edColor;
+    if (edStyle !== "original" && edNat.w) {
+      const s = coverScale() * edZoom, w = winRect();
+      url += "&fx=" + (-edOX / s / edNat.w).toFixed(5)
+           + "&fy=" + (-edOY / s / edNat.h).toFixed(5)
+           + "&fw=" + (w.w / s / edNat.w).toFixed(5)
+           + "&fh=" + (w.h / s / edNat.h).toFixed(5);
+    }
+    const r = await fetch(url, { method: "POST", body: f });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+    state = j; edUploaded++;
+    edSetButtons(true);
+    edAdvance();
+  } catch (e) {
+    $("edStatus").textContent = "Upload failed: " + e.message
+        + " — try again, or skip this photo.";
+    edSetButtons(true);
+  }
+});
+$("edSkip").addEventListener("click", () => { edSkipped++; edAdvance(); });
+$("edCancel").addEventListener("click", () => {
+  const n = edUploaded;
+  closeEditor(n
+      ? "Upload stopped — " + n + (n === 1 ? " photo" : " photos")
+        + " already went to the Frame."
+      : "Upload cancelled.");
+});
+
+load();
+setInterval(() => { if (!editing && !modalOpen && !busy) load(true); }, 30000);
+</script>
+</body>
+</html>

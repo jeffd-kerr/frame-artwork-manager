@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Frame Artwork Manager rotation tick — macOS launchd agent.
+     Runs once a minute; the script throttles itself to the interval
+     set in the web app, so a one-minute cadence is correct for any
+     setting.
+
+     Adjust the paths (replace /Users/you), then:
+       cp com.frameartwork.rotation.plist ~/Library/LaunchAgents/
+       launchctl load ~/Library/LaunchAgents/com.frameartwork.rotation.plist -->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.frameartwork.rotation</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/you/frame-artwork-manager/.venv/bin/python</string>
+		<string>/Users/you/frame-artwork-manager/frame_rotate.py</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/you/frame-artwork-manager</string>
+	<key>StartInterval</key>
+	<integer>60</integer>
+	<key>RunAtLoad</key>
+	<false/>
+	<key>StandardOutPath</key>
+	<string>/Users/you/.frame-artwork/rotation.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/you/.frame-artwork/rotation.log</string>
+</dict>
+</plist>

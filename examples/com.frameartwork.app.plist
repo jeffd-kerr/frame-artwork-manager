@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Frame Artwork Manager web app — macOS launchd agent.
+
+     Adjust the paths (replace /Users/you), then:
+       cp com.frameartwork.app.plist ~/Library/LaunchAgents/
+       launchctl load ~/Library/LaunchAgents/com.frameartwork.app.plist
+     The page is then served on port 8099 (or your config's "port"). -->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.frameartwork.app</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/you/frame-artwork-manager/.venv/bin/python</string>
+		<string>/Users/you/frame-artwork-manager/frame_app.py</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/you/frame-artwork-manager</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>StandardOutPath</key>
+	<string>/Users/you/.frame-artwork/app.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/you/.frame-artwork/app.log</string>
+</dict>
+</plist>

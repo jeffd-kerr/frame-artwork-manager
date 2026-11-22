@@ -1,0 +1,18 @@
+# Frame Artwork Manager rotation tick — systemd oneshot service.
+# Pair with frame-artwork-rotation.timer.
+#
+# Adjust the paths, then:
+#   sudo cp frame-artwork-rotation.service frame-artwork-rotation.timer /etc/systemd/system/
+#   sudo systemctl enable --now frame-artwork-rotation.timer
+
+[Unit]
+Description=Frame Artwork Manager rotation tick
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/frame-artwork-manager
+ExecStart=/opt/frame-artwork-manager/.venv/bin/python /opt/frame-artwork-manager/frame_rotate.py
+# Optional: point at a data directory other than ~/.frame-artwork
+# Environment=FRAME_DATA_DIR=/var/lib/frame-artwork
