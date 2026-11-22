@@ -86,7 +86,52 @@ Then set the rotation script to run every minute — pick one:
 
 To keep the web app itself running all the time, see
 `examples/frame-artwork.service` (systemd) or
-`examples/com.frameartwork.app.plist` (launchd).
+`examples/com.frameartwork.app.plist` (launchd). **On a Mac, use the
+app bundle in [Running on a Mac](#running-on-a-mac) instead** — a
+plain background process runs into a macOS permission wall, described
+there.
+
+## Running on a Mac
+
+macOS has a privacy feature — **Local Network** permission — that
+decides which apps may talk to devices on your home network. It has a
+sharp edge for a server like this one:
+
+- Start the server from a terminal or an SSH session and leave it
+  running, and it works — until the session that launched it ends.
+  From then on, every attempt to reach the TV fails with
+  `[Errno 65] No route to host`. The web page still loads and the app
+  itself is fine; macOS is silently refusing its connections to the
+  TV. (A `launchd` agent started the same detached way can hit the
+  same wall.)
+- There is nothing to switch on to fix the bare Python process: it
+  never appears in **Settings → Privacy & Security → Local Network**,
+  because only apps can hold that permission.
+
+The reliable route is to run the server as a small app, which is what
+`macos/build_app.sh` builds for you — a `FrameArtwork.app` bundle
+(a tiny compiled launcher that starts the Python server) with a
+local-network usage description:
+
+```sh
+macos/build_app.sh          # builds ~/Applications/FrameArtwork.app
+open ~/Applications/FrameArtwork.app
+```
+
+The first time it talks to your TV, macOS asks to allow **"python"**
+to find and connect to devices on your local network — click
+**Allow**. The permission attaches to the Python binary itself; you
+can review or revoke it later in **Settings → Privacy & Security →
+Local Network**.
+
+To start the server whenever you log in, add **Frame Artwork
+Manager** under **Settings → General → Login Items**. (It runs as a
+background app with no Dock icon; quit it from Activity Monitor, or
+by removing it and logging out.)
+
+This was verified on macOS 27: the same server that failed within
+minutes when left running from an SSH session runs indefinitely once
+launched from the app bundle.
 
 ## Configuration
 
@@ -139,6 +184,7 @@ only.
 | `frame_rotate.py` | The once-a-minute rotation tick |
 | `config.example.json` | Starter configuration |
 | `examples/` | systemd and launchd units for running both pieces |
+| `macos/` | `build_app.sh` + launcher source for the macOS app bundle (see *Running on a Mac*) |
 
 ## License
 
