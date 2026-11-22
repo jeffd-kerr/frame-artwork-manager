@@ -58,6 +58,8 @@
   .ed-colors .swname { font-size: 13px; color: #8a8172; margin-left: 4px; }
   .ed-zoom { display: flex; gap: 10px; align-items: center; margin-top: 12px; font-size: 13px; }
   .ed-zoom input { flex: 0 0 200px; }
+  .ed-pool { margin-top: 12px; font-size: 13px; }
+  .ed-pool label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
   .ed-hint { color: #8a8172; }
   .ed-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
   .ed-status { color: #8a8172; font-size: 13px; min-height: 16px; margin-top: 8px;
@@ -128,7 +130,9 @@
     <input type="number" id="interval" min="1" max="60" step="1">
     <label>min</label>
     <button id="applyInterval">Apply</button>
-    <button id="nextBtn" class="primary">Next piece</button>
+    <button id="nextBtn">Next piece</button>
+    <button id="uploadBtn" class="primary">Upload photos</button>
+    <input type="file" id="fileInput" accept="image/*" multiple style="display:none">
   </div>
 </header>
 <div id="msgbar"><span id="msg"></span></div>
@@ -158,8 +162,6 @@
       <h2>Not in the slideshow</h2><span class="count" id="countOut"></span>
       <div class="actions">
         <span class="selinfo" id="selOutInfo"></span>
-        <button id="uploadBtn">Upload photos</button>
-        <input type="file" id="fileInput" accept="image/*" multiple style="display:none">
         <button id="addBtn" class="primary" disabled>Add to slideshow</button>
         <button id="deleteOutBtn" class="danger" disabled>Delete selected</button>
       </div>
@@ -203,6 +205,9 @@
       <span>Zoom</span>
       <input type="range" id="edZoom" min="1" max="3" step="0.01" value="1">
       <span class="ed-hint">Drag the photo to position it</span>
+    </div>
+    <div class="ed-pool">
+      <label><input type="checkbox" id="edPool" checked> Add to the slideshow</label>
     </div>
     <div class="ed-actions">
       <button id="edCancel">Cancel</button>
@@ -526,7 +531,7 @@ $("modeOrdered").addEventListener("click", () => setMode("ordered"));
 $("uploadBtn").addEventListener("click", () => $("fileInput").click());
 
 let edQueue = [], edIdx = 0;
-let edUploaded = 0, edSkipped = 0, edUrl = null;
+let edUploaded = 0, edSkipped = 0, edPooled = 0, edUrl = null;
 let edStyle = "original", edColor = "FAF8F2";
 let edNat = { w: 0, h: 0 };
 let edZoom = 1, edOX = 0, edOY = 0;
@@ -572,7 +577,8 @@ $("fileInput").addEventListener("change", ev => {
   const files = [...ev.target.files];
   ev.target.value = "";
   if (!files.length || busy) return;
-  edQueue = files; edIdx = 0; edUploaded = 0; edSkipped = 0;
+  edQueue = files; edIdx = 0; edUploaded = 0; edSkipped = 0; edPooled = 0;
+  $("edPool").checked = true;
   busy = true; updateActions();
   openEditor();
 });
@@ -698,10 +704,14 @@ function edAdvance() {
   edIdx++;
   if (edIdx < edQueue.length) { openEditor(); return; }
   const n = edUploaded, s = edSkipped;
+  let where = "";
+  if (n && edPooled === n) where = " — added to the slideshow.";
+  else if (n && edPooled === 0)
+    where = " — find them below, outside the slideshow.";
   closeEditor(n || s
       ? "Uploaded " + n + (n === 1 ? " photo" : " photos")
         + (s ? ", skipped " + s : "")
-        + " — new pieces are below, outside the slideshow."
+        + where
       : "");
 }
 
@@ -718,7 +728,8 @@ $("edOk").addEventListener("click", async () => {
   $("edStatus").textContent = "Uploading to the TV…";
   try {
     let url = "/api/upload?name=" + encodeURIComponent(f.name)
-        + "&style=" + edStyle;
+        + "&style=" + edStyle
+        + "&slideshow=" + ($("edPool").checked ? "1" : "0");
     if (edStyle !== "fill") url += "&color=" + edColor;
     if (edStyle !== "original" && edNat.w) {
       const s = coverScale() * edZoom, w = winRect();
@@ -731,6 +742,7 @@ $("edOk").addEventListener("click", async () => {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
     state = j; edUploaded++;
+    if ($("edPool").checked) edPooled++;
     edSetButtons(true);
     edAdvance();
   } catch (e) {

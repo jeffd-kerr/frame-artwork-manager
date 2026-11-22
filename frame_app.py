@@ -426,6 +426,8 @@ class Handler(BaseHTTPRequestHandler):
             # legacy framing parameter
             style = "fill" if (q.get("framing") or ["fit"])[0] == "crop" \
                 else "original"
+        slideshow = (q.get("slideshow") or ["1"])[0] \
+            not in ("0", "false", "no")
         color = (250, 248, 242)
         raw_color = (q.get("color") or [""])[0]
         if len(raw_color) == 6 and all(
@@ -487,6 +489,8 @@ class Handler(BaseHTTPRequestHandler):
             labels[cid] = label
             save_json(LABELS_PATH, labels)
         make_local_thumb(cid, path)
+        if slideshow:
+            mutate_pool([cid], True)
         _attempt_snapshot()
         st = build_state()
         st["uploaded_id"] = cid

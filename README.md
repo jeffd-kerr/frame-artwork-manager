@@ -29,7 +29,9 @@ always-on machine) and gives you one page for all of it.
   (photo window on a mat with a thin white keyline), and *Modern Mat*
   (photo window with a soft shadow, no keyline). Thirteen mat colors,
   drag-to-pan and zoom in a live preview. Pieces uploaded here keep a
-  local copy, so they can be restored if the TV ever loses them.
+  local copy, so they can be restored if the TV ever loses them. New
+  uploads join the slideshow by default — uncheck *Add to the
+  slideshow* in the upload editor to keep one out.
 - **Labels** — click a piece's name to rename it. Unlabeled pieces show
   as *Untitled*.
 - **Delete with a safety net** — deleting asks for confirmation and is
