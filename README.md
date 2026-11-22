@@ -164,6 +164,14 @@ only.
   off** in a dark room — it drops off the network entirely and comes
   back when the room lights up. If the app suddenly says the TV is
   unreachable at night, that is probably why, not a fault.
+- A second TV setting can make the TV vanish the same way: the
+  **motion detector**, which turns the TV off when it senses no
+  motion for a set period. Set short (5 minutes, say), the TV drops
+  off the network in any empty room — including in the middle of
+  debugging why it is "unreachable". Both settings live in the TV's
+  Art Mode settings; if the app keeps losing the TV, check them.
+  A long motion period (4 hours, for example) keeps the TV reachable
+  without leaving it on around the clock.
 - Full-resolution images **cannot be downloaded back off the TV** —
   only thumbnails. That is why the app keeps a framed local copy of
   everything uploaded through it (cards show whether a backup
