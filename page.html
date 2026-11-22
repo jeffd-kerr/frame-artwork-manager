@@ -111,6 +111,18 @@
   #modal p { font-size: 14px; line-height: 1.45; }
   #modal ul { font-size: 13px; max-height: 160px; overflow: auto; padding-left: 18px; }
   #modal .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+  .card .zoom { position: absolute; top: 14px; right: 14px; width: 26px; height: 26px;
+          border: none; border-radius: 50%; background: rgba(35,32,28,.85); cursor: pointer;
+          display: flex; align-items: center; justify-content: center; padding: 0; }
+  .card .zoom:hover { background: rgba(35,32,28,1); }
+  .card .zoom svg { width: 15px; height: 15px; }
+  #lightbox { position: fixed; inset: 0; background: rgba(20,18,15,.85); display: none;
+           align-items: center; justify-content: center; z-index: 70; cursor: zoom-out; }
+  #lightbox.open { display: flex; }
+  #lightbox figure { margin: 0; text-align: center; }
+  #lightbox img { max-width: 94vw; max-height: 86vh; border-radius: 6px; background: #e8e2d4;
+           box-shadow: 0 12px 44px rgba(0,0,0,.5); }
+  #lightbox figcaption { color: #f2ede2; font-size: 15px; margin-top: 12px; padding: 0 12px; }
 </style>
 </head>
 <body>
@@ -218,6 +230,7 @@
   </div>
 </div>
 
+<div id="lightbox"><figure><img id="lbImg" alt=""><figcaption id="lbCap"></figcaption></figure></div>
 <script>
 let state = null;
 let busy = false;
@@ -305,6 +318,12 @@ function fillGrid(grid, items, zone) {
     img.alt = item.label || item.id;
     img.loading = "lazy";
     card.appendChild(img);
+    const zoom = document.createElement("button");
+    zoom.className = "zoom";
+    zoom.title = "Preview";
+    zoom.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg>';
+    zoom.addEventListener("click", ev => { ev.stopPropagation(); openPreview(item); });
+    card.appendChild(zoom);
     if (item.id === state.current_id) {
       const b = document.createElement("span");
       b.className = "badge"; b.textContent = "On TV now";
@@ -314,6 +333,7 @@ function fillGrid(grid, items, zone) {
       const n = document.createElement("span");
       n.className = "badge-num"; n.textContent = idx + 1;
       card.appendChild(n);
+      zoom.style.top = "44px";
     }
     const lbl = document.createElement("div");
     lbl.className = "label";
@@ -758,6 +778,16 @@ $("edCancel").addEventListener("click", () => {
       ? "Upload stopped — " + n + (n === 1 ? " photo" : " photos")
         + " already went to the Frame."
       : "Upload cancelled.");
+});
+
+function openPreview(item) {
+  $("lbImg").src = "/thumb/" + item.id + ".jpg";
+  $("lbCap").textContent = item.label || "Untitled";
+  $("lightbox").classList.add("open");
+}
+$("lightbox").addEventListener("click", () => $("lightbox").classList.remove("open"));
+document.addEventListener("keydown", ev => {
+  if (ev.key === "Escape") $("lightbox").classList.remove("open");
 });
 
 load();
