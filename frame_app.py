@@ -469,9 +469,22 @@ _met_cache = {}
 _disc_cache = {}
 
 def _http_json(url, timeout=25):
-    req = urllib.request.Request(url, headers=UA)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8", "replace"))
+    # One retry with a pause: the museum APIs (the Met especially)
+    # answer bursts with a temporary 403/429.
+    last = None
+    for attempt in range(2):
+        try:
+            req = urllib.request.Request(url, headers=UA)
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read().decode("utf-8", "replace"))
+        except Exception as e:
+            last = e
+            code = getattr(e, "code", None)
+            if attempt == 0 and code in (403, 429, 500, 502, 503):
+                time.sleep(2.5)
+                continue
+            raise
+    raise last
 
 def _http_bytes(url, timeout=90):
     req = urllib.request.Request(url, headers=UA)
@@ -524,7 +537,7 @@ def discover_met(q, limit=24):
     # The v1.1 search's public-domain flag does not match the object
     # records (top hits can be non-PD with no image), so over-fetch and
     # keep the first `limit` cards that check out against the records.
-    ids = (_http_json(url).get("objectIDs") or [])[:80]
+    ids = (_http_json(url).get("objectIDs") or [])[:48]
     def one(oid):
         try:
             return _met_card(_met_object(oid))
@@ -584,13 +597,18 @@ def discover_featured():
     key = "featured"
     if key in _disc_cache and time.time() - _disc_cache[key][0] < 3600:
         return _disc_cache[key][1]
-    cards = []
+    lists = []
     for fn, q in ((discover_met, "Monet"), (discover_cma, "landscape"),
                   (discover_aic, "Monet")):
         try:
-            cards += fn(q, 8)
+            lists.append(fn(q, 8))
         except Exception:
-            pass
+            lists.append([])
+    cards = []
+    for i in range(8):
+        for lst in lists:
+            if i < len(lst):
+                cards.append(lst[i])
     _disc_cache[key] = (time.time(), cards)
     return cards
 
