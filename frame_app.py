@@ -476,7 +476,14 @@ def _http_bytes(url, timeout=90):
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read()
 
+def _dim(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
 def _badge(w, h):
+    w, h = _dim(w), _dim(h)
     if w and h and w >= 3840 and h >= 2160:
         return "Exact 4K" if (w, h) == (3840, 2160) else "4K crop possible"
     return ""
@@ -528,7 +535,7 @@ def discover_cma(q, limit=24):
         if not pr.get("url"):
             continue
         creators = it.get("creators") or []
-        w, h = pr.get("width"), pr.get("height")
+        w, h = _dim(pr.get("width")), _dim(pr.get("height"))
         cards.append({
             "source": "cma", "id": str(it["id"]),
             "title": it.get("title") or "Untitled",
@@ -608,8 +615,8 @@ def discover_resolve(source, oid):
                 "medium": it.get("technique") or "",
                 "thumb_url": (imgs.get("web") or {}).get("url") or pr["url"],
                 "image_url": (imgs.get("web") or {}).get("url") or pr["url"],
-                "send_url": pr["url"], "width": pr.get("width"),
-                "height": pr.get("height"),
+                "send_url": pr["url"], "width": _dim(pr.get("width")),
+                "height": _dim(pr.get("height")),
                 "badge": _badge(pr.get("width"), pr.get("height"))}
     if source == "aic":
         fields = ("id,title,artist_title,date_display,medium_display,"
