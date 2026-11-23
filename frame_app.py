@@ -1,6 +1,7 @@
-import asyncio, json, os, re, subprocess, sys, threading, time
+import asyncio, hashlib, json, os, re, subprocess, sys, threading, time
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, quote
 
 # --- Configuration -------------------------------------------------------
 # Everything the app keeps (labels, thumbnails, uploads, rotation state)
@@ -32,6 +33,9 @@ ROTATE_SCRIPT = os.path.join(APP_DIR, "frame_rotate.py")
 LABELS_PATH = os.path.join(DATA_DIR, "labels.json")
 UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
 UPLOADED_PATH = os.path.join(DATA_DIR, "uploaded.json")
+JOURNAL_PATH = os.path.join(DATA_DIR, "uploads_journal.json")
+SAVED_PATH = os.path.join(DATA_DIR, "discover_saved.json")
+DISCOVER_DIR = os.path.join(DATA_DIR, "discover_cache")
 THUMB_DIR = os.path.join(DATA_DIR, "thumbs")
 PAGE_PATH = os.path.join(APP_DIR, "page.html")
 PORT = int(CFG["port"])
@@ -265,6 +269,35 @@ async def _tv_op(op, arg):
                          t.get("image_binary") or t.get("data")
                          for t in (r or []) if isinstance(t, dict)}
             return [by_id.get(cid) for cid in ids]
+        if op == "settings_get":
+            out = {}
+            for name in ("get_brightness", "get_color_temperature",
+                         "get_artmode_settings", "get_slideshow_status",
+                         "get_auto_rotation_status"):
+                try:
+                    out[name] = await getattr(art, name)()
+                except Exception as e:
+                    out[name] = {"error": str(e) or repr(e)}
+            return out
+        if op == "settings_set":
+            errors = {}
+            spec = [("brightness", "set_brightness", int),
+                    ("color_temperature", "set_color_temperature", int),
+                    ("motion_sensitivity", "set_motion_sensitivity", str),
+                    ("motion_timer", "set_motion_timer", str),
+                    ("brightness_sensor_setting",
+                     "set_brightness_sensor_setting", str),
+                    ("slideshow_status", "set_slideshow_status", str),
+                    ("auto_rotation_status",
+                     "set_auto_rotation_status", str)]
+            for key, method, conv in spec:
+                if key not in (arg or {}):
+                    continue
+                try:
+                    await getattr(art, method)(conv(arg[key]))
+                except Exception as e:
+                    errors[key] = str(e) or repr(e)
+            return {"errors": errors}
         return None
     finally:
         try:
@@ -333,6 +366,275 @@ def ensure_thumbs(ids):
     except Exception:
         pass
 
+def _sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+def load_journal():
+    j = load_json(JOURNAL_PATH, [])
+    return j if isinstance(j, list) else []
+
+def find_duplicate(sha):
+    """Content id of an identical framed image that is still on the TV,
+    or None. Dedupe is by the framed bytes, so the same photo with a
+    different mat counts as a different piece (as it should)."""
+    uploaded = load_json(UPLOADED_PATH, {})
+    snap, _ = get_snapshot()
+    on_tv = set(snap.get("uploads", []))
+    for cid, entry in uploaded.items():
+        if entry.get("sha256") == sha and cid in on_tv:
+            return cid
+    return None
+
+def deliver_image(path, label, slideshow):
+    """Upload one framed image file to the TV, with dedupe and with
+    verification against the TV's own artwork list before the upload is
+    recorded. Returns ("ok" | "duplicate" | "unconfirmed", content_id).
+    Raises on hard failure; the caller still owns the local file then.
+    An unconfirmed upload is written to the journal and blocks further
+    uploads until the user resolves it (see /api/journal/resolve)."""
+    sha = _sha256_file(path)
+    dup = find_duplicate(sha)
+    if dup:
+        return ("duplicate", dup)
+    cid, err = None, None
+    for attempt in range(2):
+        try:
+            cid = tv_op("upload", path)
+            err = None
+            break
+        except Exception as e:
+            err = e
+            if attempt == 0:
+                time.sleep(3)
+    if err is not None:
+        raise err
+    if not cid or not isinstance(cid, str):
+        raise RuntimeError("The TV did not accept the upload.")
+    snap, _live = _attempt_snapshot()
+    on_tv = set((snap or {}).get("uploads", []))
+    if cid not in on_tv:
+        journal = load_journal()
+        journal.append({"ts": int(time.time()),
+                        "file": os.path.basename(path), "sha256": sha,
+                        "label": label, "cid": cid,
+                        "status": "unconfirmed"})
+        save_json(JOURNAL_PATH, journal)
+        return ("unconfirmed", cid)
+    uploaded = load_json(UPLOADED_PATH, {})
+    uploaded[cid] = {"file": os.path.basename(path), "label": label,
+                     "sha256": sha}
+    save_json(UPLOADED_PATH, uploaded)
+    if label:
+        labels = load_labels()
+        labels[cid] = label
+        save_json(LABELS_PATH, labels)
+    make_local_thumb(cid, path)
+    if slideshow:
+        mutate_pool([cid], True)
+    return ("ok", cid)
+
+def backfill_hashes():
+    """Give older uploads a content hash so dedupe covers them too."""
+    try:
+        uploaded = load_json(UPLOADED_PATH, {})
+        changed = False
+        for entry in uploaded.values():
+            if not entry.get("sha256"):
+                p = os.path.join(UPLOAD_DIR, entry.get("file", ""))
+                if os.path.exists(p):
+                    entry["sha256"] = _sha256_file(p)
+                    changed = True
+        if changed:
+            save_json(UPLOADED_PATH, uploaded)
+    except Exception:
+        pass
+
+# --- Discover: public museum collections --------------------------------
+# Three open-access APIs, no keys: The Met, the Cleveland Museum of Art
+# and the Art Institute of Chicago. Cards are normalized to one shape;
+# the full image is downloaded by this server (never the browser) when
+# a piece is previewed or sent.
+
+UA = {"User-Agent": "FrameArtworkManager/1.1 (personal artwork browser)"}
+MET_API = "https://collectionapi.metmuseum.org/public/collection/v1"
+CMA_API = "https://openaccess-api.clevelandart.org/api/artworks"
+AIC_API = "https://api.artic.edu/api/v1/artworks"
+_met_cache = {}
+_disc_cache = {}
+
+def _http_json(url, timeout=25):
+    req = urllib.request.Request(url, headers=UA)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8", "replace"))
+
+def _http_bytes(url, timeout=90):
+    req = urllib.request.Request(url, headers=UA)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read()
+
+def _badge(w, h):
+    if w and h and w >= 3840 and h >= 2160:
+        return "Exact 4K" if (w, h) == (3840, 2160) else "4K crop possible"
+    return ""
+
+def _pool_map(fn, items, workers=6):
+    from concurrent.futures import ThreadPoolExecutor
+    if len(items) <= 1:
+        return [fn(i) for i in items]
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        return list(ex.map(fn, items))
+
+def _met_object(oid):
+    if oid in _met_cache:
+        return _met_cache[oid]
+    o = _http_json("%s/objects/%s" % (MET_API, oid))
+    _met_cache[oid] = o
+    return o
+
+def _met_card(o):
+    if not o or not o.get("isPublicDomain") or not o.get("primaryImage"):
+        return None
+    return {"source": "met", "id": str(o["objectID"]),
+            "title": o.get("title") or "Untitled",
+            "artist": o.get("artistDisplayName") or "",
+            "date": o.get("objectDate") or "",
+            "medium": o.get("medium") or "",
+            "thumb_url": o.get("primaryImageSmall") or o["primaryImage"],
+            "image_url": o["primaryImage"], "send_url": o["primaryImage"],
+            "width": None, "height": None, "badge": ""}
+
+def discover_met(q, limit=24):
+    url = "%s/search?hasImages=true&isPublicDomain=true&q=%s" % (
+        MET_API, quote(q or "landscape"))
+    ids = (_http_json(url).get("objectIDs") or [])[:limit]
+    def one(oid):
+        try:
+            return _met_card(_met_object(oid))
+        except Exception:
+            return None
+    return [c for c in _pool_map(one, ids) if c]
+
+def discover_cma(q, limit=24):
+    url = "%s/?has_image=1&cc0=1&limit=%d&q=%s" % (
+        CMA_API, limit, quote(q or ""))
+    cards = []
+    for it in _http_json(url).get("data", []):
+        imgs = it.get("images") or {}
+        pr, web = imgs.get("print") or {}, imgs.get("web") or {}
+        if not pr.get("url"):
+            continue
+        creators = it.get("creators") or []
+        w, h = pr.get("width"), pr.get("height")
+        cards.append({
+            "source": "cma", "id": str(it["id"]),
+            "title": it.get("title") or "Untitled",
+            "artist": creators[0].get("description", "") if creators else "",
+            "date": it.get("creation_date") or "",
+            "medium": it.get("technique") or "",
+            "thumb_url": web.get("url") or pr["url"],
+            "image_url": web.get("url") or pr["url"],
+            "send_url": pr["url"],
+            "width": w, "height": h, "badge": _badge(w, h)})
+    return cards
+
+def _aic_card(it, iiif):
+    iid = it.get("image_id")
+    if not iid or not it.get("is_public_domain"):
+        return None
+    return {"source": "aic", "id": str(it["id"]),
+            "title": it.get("title") or "Untitled",
+            "artist": it.get("artist_title") or "",
+            "date": it.get("date_display") or "",
+            "medium": it.get("medium_display") or "",
+            "thumb_url": "%s/%s/full/400,/0/default.jpg" % (iiif, iid),
+            "image_url": "%s/%s/full/1200,/0/default.jpg" % (iiif, iid),
+            "send_url": "%s/%s/full/3840,/0/default.jpg" % (iiif, iid),
+            "width": None, "height": None, "badge": ""}
+
+def discover_aic(q, limit=24):
+    fields = ("id,title,artist_title,date_display,medium_display,"
+              "image_id,is_public_domain")
+    url = "%s/search?limit=%d&fields=%s&q=%s" % (
+        AIC_API, limit, fields, quote(q or ""))
+    r = _http_json(url)
+    iiif = (r.get("config") or {}).get("iiif_url",
+                                        "https://www.artic.edu/iiif/2")
+    return [c for c in (_aic_card(it, iiif) for it in r.get("data", []))
+            if c]
+
+def discover_featured():
+    key = "featured"
+    if key in _disc_cache and time.time() - _disc_cache[key][0] < 3600:
+        return _disc_cache[key][1]
+    cards = []
+    for fn, q in ((discover_met, "Monet"), (discover_cma, "landscape"),
+                  (discover_aic, "Monet")):
+        try:
+            cards += fn(q, 8)
+        except Exception:
+            pass
+    _disc_cache[key] = (time.time(), cards)
+    return cards
+
+def discover_search(source, q):
+    if source == "met":
+        return discover_met(q)
+    if source == "cma":
+        return discover_cma(q)
+    if source == "aic":
+        return discover_aic(q)
+    return discover_featured()
+
+def discover_resolve(source, oid):
+    """Full card (with send_url) for one museum object."""
+    if source == "met":
+        return _met_card(_met_object(int(oid)))
+    if source == "cma":
+        it = _http_json("%s/%s" % (CMA_API, oid)).get("data") or {}
+        imgs = it.get("images") or {}
+        pr = imgs.get("print") or {}
+        if not pr.get("url"):
+            return None
+        creators = it.get("creators") or []
+        return {"source": "cma", "id": str(it.get("id", oid)),
+                "title": it.get("title") or "Untitled",
+                "artist": creators[0].get("description", "")
+                if creators else "",
+                "date": it.get("creation_date") or "",
+                "medium": it.get("technique") or "",
+                "thumb_url": (imgs.get("web") or {}).get("url") or pr["url"],
+                "image_url": (imgs.get("web") or {}).get("url") or pr["url"],
+                "send_url": pr["url"], "width": pr.get("width"),
+                "height": pr.get("height"),
+                "badge": _badge(pr.get("width"), pr.get("height"))}
+    if source == "aic":
+        fields = ("id,title,artist_title,date_display,medium_display,"
+                  "image_id,is_public_domain")
+        r = _http_json("%s/%s?fields=%s" % (AIC_API, oid, fields))
+        iiif = (r.get("config") or {}).get(
+            "iiif_url", "https://www.artic.edu/iiif/2")
+        return _aic_card(r.get("data") or {}, iiif)
+    return None
+
+def discover_image_bytes(source, oid):
+    """The full-size image for one museum piece, disk-cached."""
+    os.makedirs(DISCOVER_DIR, exist_ok=True)
+    path = os.path.join(DISCOVER_DIR, "%s_%s.jpg" % (source, oid))
+    if os.path.exists(path) and os.path.getsize(path) > 10000:
+        with open(path, "rb") as f:
+            return f.read()
+    card = discover_resolve(source, oid)
+    if not card:
+        raise RuntimeError("That work could not be found.")
+    data = _http_bytes(card["send_url"])
+    with open(path, "wb") as f:
+        f.write(data)
+    return data
+
 def build_state():
     snap, live = get_snapshot()
     rot = load_json(ROT_PATH, {})
@@ -355,6 +657,7 @@ def build_state():
         "in": [item(c) for c in pool if c in liveset],
         "out": [item(c) for c in snap["uploads"]
                 if c not in poolset],
+        "journal": load_journal(),
     }
 
 def mutate_pool(ids, add):
@@ -409,6 +712,45 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/state":
             self._send(200, build_state())
             return
+        if path == "/api/discover":
+            q = parse_qs(urlparse(self.path).query)
+            source = (q.get("source") or ["featured"])[0]
+            if source not in ("featured", "met", "cma", "aic"):
+                source = "featured"
+            term = (q.get("q") or [""])[0]
+            try:
+                self._send(200, {"ok": True,
+                                 "items": discover_search(source, term)})
+            except Exception as e:
+                self._send(502, {"ok": False, "error":
+                    "The museum service did not answer (%s)." % e})
+            return
+        if path == "/api/discover/saved":
+            items = load_json(SAVED_PATH, [])
+            self._send(200, {"ok": True,
+                             "items": items if isinstance(items, list)
+                             else []})
+            return
+        if path == "/api/discover/image":
+            q = parse_qs(urlparse(self.path).query)
+            source = (q.get("source") or [""])[0]
+            oid = (q.get("id") or [""])[0]
+            if source not in ("met", "cma", "aic") or not oid.isdigit():
+                self._send(400, {"ok": False})
+                return
+            try:
+                self._send(200, discover_image_bytes(source, oid),
+                           "image/jpeg")
+            except Exception as e:
+                self._send(502, {"ok": False, "error": str(e)})
+            return
+        if path == "/api/tvsettings":
+            try:
+                self._send(200, {"ok": True,
+                                 "settings": tv_op("settings_get", None)})
+            except Exception as e:
+                self._send(500, {"ok": False, "error": str(e)})
+            return
         if path.startswith("/thumb/"):
             cid = path.split("/")[2].split(".")[0]
             if "/" in cid or ".." in cid:
@@ -457,6 +799,12 @@ class Handler(BaseHTTPRequestHandler):
                              "error": "File missing or larger than 40 MB."})
             return
         data = self.rfile.read(n)
+        if load_journal():
+            self._send(409, {"ok": False, "error":
+                "An earlier upload could not be confirmed on the TV. "
+                "Resolve it in the notice at the top of the page before "
+                "uploading more."})
+            return
         stem = os.path.splitext(os.path.basename(name))[0]
         try:
             path = frame_and_save(data, style, stem, color, crop)
@@ -465,45 +813,106 @@ class Handler(BaseHTTPRequestHandler):
                 "Could not read that image (%s). JPEG and PNG work best."
                 % type(e).__name__})
             return
-        cid, err = None, None
-        for attempt in range(2):
-            try:
-                cid = tv_op("upload", path)
-                err = None
-                break
-            except Exception as e:
-                err = e
-                if attempt == 0:
-                    time.sleep(3)
-        if err is not None:
-            try:
-                os.remove(path)
-            except Exception:
-                pass
-            self._send(500, {"ok": False, "error": "TV upload failed: %s" % err})
-            return
-        if not cid or not isinstance(cid, str):
+        label = " ".join(stem.replace("_", " ").replace("-", " ").split())[:120]
+        try:
+            status, cid = deliver_image(path, label, slideshow)
+        except Exception as e:
             try:
                 os.remove(path)
             except Exception:
                 pass
             self._send(500, {"ok": False,
-                             "error": "The TV did not accept the upload."})
+                             "error": "TV upload failed: %s" % e})
             return
-        label = " ".join(stem.replace("_", " ").replace("-", " ").split())[:120]
-        uploaded = load_json(UPLOADED_PATH, {})
-        uploaded[cid] = {"file": os.path.basename(path), "label": label}
-        save_json(UPLOADED_PATH, uploaded)
-        if label:
-            labels = load_labels()
-            labels[cid] = label
-            save_json(LABELS_PATH, labels)
-        make_local_thumb(cid, path)
-        if slideshow:
-            mutate_pool([cid], True)
+        if status == "duplicate":
+            try:
+                os.remove(path)
+            except Exception:
+                pass
         _attempt_snapshot()
         st = build_state()
         st["uploaded_id"] = cid
+        if status == "duplicate":
+            st["message"] = "That exact image is already on the Frame."
+        elif status == "unconfirmed":
+            st["message"] = ("The TV took the upload, but the piece could "
+                             "not be confirmed in its list — see the "
+                             "notice at the top of the page.")
+        self._send(200, st)
+
+    def _handle_discover_send(self, data):
+        source = data.get("source")
+        oid = str(data.get("id") or "")
+        if source not in ("met", "cma", "aic") or not oid.isdigit():
+            self._send(400, {"ok": False, "error": "Unknown artwork."})
+            return
+        if load_journal():
+            self._send(409, {"ok": False, "error":
+                "An earlier upload could not be confirmed on the TV. "
+                "Resolve it in the notice at the top of the page before "
+                "uploading more."})
+            return
+        style = data.get("style")
+        if style not in ("fill", "original", "classic", "modern"):
+            style = "fill"
+        slideshow = bool(data.get("slideshow", True))
+        color = (250, 248, 242)
+        raw_color = str(data.get("color") or "")
+        if len(raw_color) == 6 and all(
+                c in "0123456789abcdefABCDEF" for c in raw_color):
+            color = tuple(int(raw_color[i:i + 2], 16) for i in (0, 2, 4))
+        crop = None
+        try:
+            vals = [float(data[k]) for k in ("fx", "fy", "fw", "fh")]
+            if vals[2] > 0.02 and vals[3] > 0.02:
+                crop = tuple(vals)
+        except Exception:
+            crop = None
+        try:
+            card = discover_resolve(source, oid)
+            if not card:
+                raise RuntimeError("not found")
+            data_bytes = discover_image_bytes(source, oid)
+        except Exception as e:
+            self._send(502, {"ok": False, "error":
+                "Could not download that artwork (%s)." % e})
+            return
+        title = card["title"]
+        artist = card.get("artist") or ""
+        label = (title + (" — " + artist if artist else ""))[:120]
+        stem = re.sub(r"[^A-Za-z0-9._-]+", "_", title)[:60] or "artwork"
+        try:
+            path = frame_and_save(data_bytes, style, stem, color, crop)
+        except Exception as e:
+            self._send(400, {"ok": False, "error":
+                "Could not read that image (%s)." % type(e).__name__})
+            return
+        try:
+            status, cid = deliver_image(path, label, slideshow)
+        except Exception as e:
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+            self._send(500, {"ok": False,
+                             "error": "TV upload failed: %s" % e})
+            return
+        if status == "duplicate":
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+        _attempt_snapshot()
+        st = build_state()
+        st["uploaded_id"] = cid
+        if status == "duplicate":
+            st["message"] = "That exact image is already on the Frame."
+        elif status == "unconfirmed":
+            st["message"] = ("The TV took the upload, but the piece could "
+                             "not be confirmed in its list — see the "
+                             "notice at the top of the page.")
+        else:
+            st["message"] = "Sent to the Frame: %s" % label
         self._send(200, st)
 
     def do_POST(self):
@@ -596,6 +1005,63 @@ class Handler(BaseHTTPRequestHandler):
                 rot["pool"] = ids
                 save_json(ROT_PATH, rot)
                 self._send(200, build_state())
+            elif path == "/api/discover/save":
+                item = data.get("item") or {}
+                key = (item.get("source"), str(item.get("id")))
+                saved = load_json(SAVED_PATH, [])
+                if not isinstance(saved, list):
+                    saved = []
+                saved = [s for s in saved
+                         if (s.get("source"), str(s.get("id"))) != key]
+                if data.get("saved"):
+                    saved.append(item)
+                save_json(SAVED_PATH, saved)
+                self._send(200, {"ok": True, "items": saved})
+            elif path == "/api/discover/send":
+                self._handle_discover_send(data)
+            elif path == "/api/journal/resolve":
+                sha = data.get("sha256")
+                action = data.get("action")
+                journal = load_journal()
+                entry = next((j for j in journal
+                              if j.get("sha256") == sha), None)
+                if entry is None:
+                    self._send(404, {"ok": False,
+                                     "error": "That entry is already gone."})
+                    return
+                if action not in ("found", "missing"):
+                    self._send(400, {"ok": False,
+                                     "error": "Unknown action."})
+                    return
+                journal = [j for j in journal
+                           if j.get("sha256") != sha]
+                save_json(JOURNAL_PATH, journal)
+                if action == "found":
+                    cid = entry.get("cid")
+                    uploaded = load_json(UPLOADED_PATH, {})
+                    uploaded[cid] = {"file": entry.get("file"),
+                                     "label": entry.get("label"),
+                                     "sha256": sha}
+                    save_json(UPLOADED_PATH, uploaded)
+                    if entry.get("label"):
+                        labels = load_labels()
+                        labels[cid] = entry["label"]
+                        save_json(LABELS_PATH, labels)
+                    make_local_thumb(cid, os.path.join(
+                        UPLOAD_DIR, entry.get("file", "")))
+                else:
+                    try:
+                        os.remove(os.path.join(UPLOAD_DIR,
+                                               entry.get("file", "")))
+                    except Exception:
+                        pass
+                _attempt_snapshot()
+                self._send(200, build_state())
+            elif path == "/api/tvsettings":
+                r = tv_op("settings_set", data)
+                fresh = tv_op("settings_get", None)
+                self._send(200, {"ok": True, "settings": fresh,
+                                 "errors": (r or {}).get("errors", {})})
             elif path == "/api/settings":
                 rot = load_json(ROT_PATH, {})
                 if "mode" in data:
@@ -665,8 +1131,9 @@ if __name__ == "__main__":
             "No TV configured. Create %s with your TV's address "
             "(see config.example.json)."
             % os.path.join(DATA_DIR, "config.json"))
-    for d in (DATA_DIR, UPLOAD_DIR, THUMB_DIR):
+    for d in (DATA_DIR, UPLOAD_DIR, THUMB_DIR, DISCOVER_DIR):
         os.makedirs(d, exist_ok=True)
     load_labels()
     threading.Thread(target=prime_thumbs, daemon=True).start()
+    threading.Thread(target=backfill_hashes, daemon=True).start()
     ThreadingHTTPServer((CFG["bind"], PORT), Handler).serve_forever()

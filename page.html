@@ -123,6 +123,36 @@
   #lightbox img { max-width: 94vw; max-height: 86vh; border-radius: 6px; background: #e8e2d4;
            box-shadow: 0 12px 44px rgba(0,0,0,.5); }
   #lightbox figcaption { color: #f2ede2; font-size: 15px; margin-top: 12px; padding: 0 12px; }
+  #tabs { background: #2c2823; display: flex; gap: 4px; padding: 0 22px; }
+  #tabs button { background: transparent; border: none; color: #cfc8ba; font-size: 14px;
+          padding: 9px 14px; border-radius: 0; cursor: pointer;
+          border-bottom: 3px solid transparent; }
+  #tabs button:hover:not(:disabled) { background: rgba(255,255,255,.06); color: #fff; }
+  #tabs button.active { color: #fff; border-bottom-color: #7fae8a; font-weight: 600; }
+  #journalbar { display: none; background: #f6e3e0; color: #6e352c; font-size: 13.5px;
+          padding: 9px 22px; border-bottom: 1px solid #e3c4bd; }
+  #journalbar.show { display: block; }
+  #journalbar .jrow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+          padding: 3px 0; }
+  #journalbar button { padding: 3px 10px; font-size: 12.5px; }
+  .discbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .srcpills { display: flex; gap: 6px; flex-wrap: wrap; }
+  .srcpills button.active { background: #2f5d3a; border-color: #2f5d3a; color: #fff; }
+  .discbar input[type=search] { flex: 1 1 220px; padding: 7px 10px; font-size: 14px;
+          border: 1px solid #b9b2a6; border-radius: 6px; background: #fff; }
+  .discnote { color: #8a8172; font-size: 13px; margin-bottom: 12px; }
+  .card .meta { font-size: 12px; color: #6d6455; margin-top: 3px; line-height: 1.35; }
+  .card .dim { font-size: 11px; color: #a08c5a; }
+  .card .src { font-size: 11px; color: #8a8172; text-transform: uppercase; letter-spacing: .05em; }
+  .setrow { display: flex; align-items: center; gap: 14px; padding: 9px 0;
+          border-bottom: 1px solid #eee6d6; flex-wrap: wrap; }
+  .setrow:last-child { border-bottom: none; }
+  .setrow .k { flex: 0 0 210px; font-size: 14px; font-weight: 600; }
+  .setrow .v { font-size: 13px; color: #6d6455; min-width: 44px; }
+  .setrow input[type=range] { flex: 0 0 220px; }
+  .setrow select { padding: 5px 8px; font-size: 14px; border-radius: 5px;
+          border: 1px solid #b9b2a6; background: #fff; }
+  .setrow .hint { font-size: 12px; color: #8a8172; flex: 1 1 200px; }
 </style>
 </head>
 <body>
@@ -149,6 +179,12 @@
 </header>
 <div id="msgbar"><span id="msg"></span></div>
 <div id="tvbar">The TV isn't responding — it may be off or asleep. The lists below are from the last time it answered, and they'll refresh on their own when it's back.</div>
+<div id="journalbar"></div>
+<nav id="tabs">
+  <button id="tabLibrary" class="active">Library</button>
+  <button id="tabDiscover">Discover</button>
+  <button id="tabTv">TV settings</button>
+</nav>
 </div>
 <main>
   <section class="zone" id="zoneIn">
@@ -180,6 +216,77 @@
     </div>
     <div class="grid" id="gridOut"></div>
     <div class="empty" id="emptyOut" style="display:none">Everything on the TV is in the slideshow.</div>
+  </section>
+  <section class="zone" id="zoneDiscover" style="display:none">
+    <div class="zonehead">
+      <h2>Discover museum artwork</h2><span class="count" id="discCount"></span>
+    </div>
+    <div class="discbar">
+      <div class="srcpills" id="discSources">
+        <button data-src="featured" class="active">Featured</button>
+        <button data-src="met">The Met</button>
+        <button data-src="cma">Cleveland</button>
+        <button data-src="aic">Chicago</button>
+        <button data-src="saved">Saved</button>
+      </div>
+      <input type="search" id="discQuery" placeholder="Search the collections — try “harbor”, “Monet”, “woodblock”…">
+      <button id="discGo" class="primary">Search</button>
+    </div>
+    <div class="discnote">Open-access works from The Met, the Cleveland Museum of Art and the Art Institute of Chicago. The magnifier previews a piece; “Send…” frames it and puts it on the TV; the heart keeps it in your Saved list.</div>
+    <div class="grid" id="discGrid"></div>
+    <div class="empty" id="discEmpty" style="display:none"></div>
+  </section>
+  <section class="zone" id="zoneTv" style="display:none">
+    <div class="zonehead">
+      <h2>TV settings</h2><span class="count" id="tvSetStatus"></span>
+    </div>
+    <div id="tvSetBody">
+      <div class="setrow"><span class="k">Brightness</span>
+        <input type="range" id="setBrightness" min="0" max="10" step="1">
+        <span class="v" id="valBrightness"></span>
+        <span class="hint">Art Mode brightness, 0–10.</span></div>
+      <div class="setrow"><span class="k">Color temperature</span>
+        <input type="range" id="setColorTemp" min="-5" max="5" step="1">
+        <span class="v" id="valColorTemp"></span>
+        <span class="hint">−5 is warmest, +5 is coolest.</span></div>
+      <div class="setrow"><span class="k">Brightness sensor</span>
+        <select id="setBrightnessSensor">
+          <option value="on">On — adjusts to the room</option>
+          <option value="off">Off</option>
+        </select>
+        <span class="hint">When on, the TV dims in a dark room and powers off if it stays dark.</span></div>
+      <div class="setrow"><span class="k">Motion sensor sensitivity</span>
+        <select id="setMotionSensitivity">
+          <option value="1">1 — least sensitive</option>
+          <option value="2">2</option>
+          <option value="3">3 — most sensitive</option>
+        </select>
+        <span class="hint">How readily the TV notices someone in the room.</span></div>
+      <div class="setrow"><span class="k">Motion timer</span>
+        <select id="setMotionTimer">
+          <option value="off">Off — never sleeps for motion</option>
+          <option value="5">5 minutes</option>
+          <option value="15">15 minutes</option>
+          <option value="30">30 minutes</option>
+          <option value="60">1 hour</option>
+          <option value="120">2 hours</option>
+          <option value="240">4 hours</option>
+        </select>
+        <span class="hint">Turns Art Mode off after this long with nobody detected.</span></div>
+      <div class="setrow"><span class="k">TV's own slideshow</span>
+        <select id="setSlideshow">
+          <option value="off">Off — this app rotates the art</option>
+          <option value="on">On</option>
+        </select>
+        <span class="hint">Some Frame models refuse to change this from an app; if yours does, the app's rotation keeps working regardless.</span></div>
+      <div class="setrow"><span class="k">Auto-rotation (portrait pieces)</span>
+        <select id="setAutoRotation">
+          <option value="off">Off</option>
+          <option value="on">On</option>
+        </select>
+        <span class="hint">The TV's automatic rotation for portrait-mounted art.</span></div>
+    </div>
+    <div class="discnote" id="tvSetNote">Changes apply to the TV as soon as you make them.</div>
   </section>
 </main>
 <footer>Deleting a piece removes it from the TV permanently.</footer>
@@ -305,6 +412,7 @@ function render() {
   $("emptyIn").style.display = state.in.length ? "none" : "block";
   $("emptyOut").style.display = state.out.length ? "none" : "block";
   updateActions();
+  renderJournal();
 }
 
 function fillGrid(grid, items, zone) {
@@ -551,7 +659,7 @@ $("modeOrdered").addEventListener("click", () => setMode("ordered"));
 $("uploadBtn").addEventListener("click", () => $("fileInput").click());
 
 let edQueue = [], edIdx = 0;
-let edUploaded = 0, edSkipped = 0, edPooled = 0, edUrl = null;
+let edUploaded = 0, edSkipped = 0, edPooled = 0, edUrl = null, edUrlIsBlob = false;
 let edStyle = "original", edColor = "FAF8F2";
 let edNat = { w: 0, h: 0 };
 let edZoom = 1, edOX = 0, edOY = 0;
@@ -604,10 +712,23 @@ $("fileInput").addEventListener("change", ev => {
 });
 
 function openEditor() {
-  const f = edQueue[edIdx];
-  if (edUrl) URL.revokeObjectURL(edUrl);
-  edUrl = URL.createObjectURL(f);
-  $("edName").textContent = f.name;
+  const entry = edQueue[edIdx];
+  if (edUrl && edUrlIsBlob) URL.revokeObjectURL(edUrl);
+  edUrlIsBlob = false;
+  if (entry && entry.disc) {
+    const it = entry.disc;
+    edUrl = "/api/discover/image?source=" + encodeURIComponent(it.source)
+        + "&id=" + encodeURIComponent(it.id);
+    $("edTitle").textContent = "Send artwork to the Frame";
+    $("edName").textContent = it.title
+        + (it.artist ? " — " + it.artist : "")
+        + (it.date ? " (" + it.date + ")" : "");
+  } else {
+    edUrl = URL.createObjectURL(entry);
+    edUrlIsBlob = true;
+    $("edTitle").textContent = "Add photo";
+    $("edName").textContent = entry.name;
+  }
   $("edCount").textContent = edQueue.length > 1
       ? "Photo " + (edIdx + 1) + " of " + edQueue.length : "";
   $("edStatus").textContent = "";
@@ -713,7 +834,8 @@ $("edWindow").addEventListener("pointercancel", () => { edDrag = null; });
 
 function closeEditor(summary) {
   $("editorOverlay").className = "";
-  if (edUrl) { URL.revokeObjectURL(edUrl); edUrl = null; }
+  if (edUrl && edUrlIsBlob) URL.revokeObjectURL(edUrl);
+  edUrl = null; edUrlIsBlob = false;
   edQueue = [];
   busy = false; updateActions();
   if (state) render();
@@ -742,28 +864,45 @@ function edSetButtons(on) {
 }
 
 $("edOk").addEventListener("click", async () => {
-  const f = edQueue[edIdx];
-  if (!f) return;
+  const entry = edQueue[edIdx];
+  if (!entry) return;
   edSetButtons(false);
   $("edStatus").textContent = "Uploading to the TV…";
+  const cropQS = () => {
+    if (edStyle === "original" || !edNat.w) return null;
+    const s = coverScale() * edZoom, w = winRect();
+    return { fx: (-edOX / s / edNat.w).toFixed(5),
+             fy: (-edOY / s / edNat.h).toFixed(5),
+             fw: (w.w / s / edNat.w).toFixed(5),
+             fh: (w.h / s / edNat.h).toFixed(5) };
+  };
   try {
-    let url = "/api/upload?name=" + encodeURIComponent(f.name)
+    if (entry.disc) {
+      const it = entry.disc;
+      const body = { source: it.source, id: it.id, style: edStyle,
+                     slideshow: $("edPool").checked };
+      if (edStyle !== "fill") body.color = edColor;
+      const c = cropQS();
+      if (c) Object.assign(body, c);
+      const j = await api("/api/discover/send", body);
+      state = j;
+      edSetButtons(true);
+      closeEditor(j.message || "Sent to the Frame.");
+      return;
+    }
+    let url = "/api/upload?name=" + encodeURIComponent(entry.name)
         + "&style=" + edStyle
         + "&slideshow=" + ($("edPool").checked ? "1" : "0");
     if (edStyle !== "fill") url += "&color=" + edColor;
-    if (edStyle !== "original" && edNat.w) {
-      const s = coverScale() * edZoom, w = winRect();
-      url += "&fx=" + (-edOX / s / edNat.w).toFixed(5)
-           + "&fy=" + (-edOY / s / edNat.h).toFixed(5)
-           + "&fw=" + (w.w / s / edNat.w).toFixed(5)
-           + "&fh=" + (w.h / s / edNat.h).toFixed(5);
-    }
-    const r = await fetch(url, { method: "POST", body: f });
+    const c = cropQS();
+    if (c) url += "&fx=" + c.fx + "&fy=" + c.fy + "&fw=" + c.fw + "&fh=" + c.fh;
+    const r = await fetch(url, { method: "POST", body: entry });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
     state = j; edUploaded++;
     if ($("edPool").checked) edPooled++;
     edSetButtons(true);
+    if (j.message && edQueue.length === 1) { closeEditor(j.message); return; }
     edAdvance();
   } catch (e) {
     $("edStatus").textContent = "Upload failed: " + e.message
@@ -788,6 +927,281 @@ function openPreview(item) {
 $("lightbox").addEventListener("click", () => $("lightbox").classList.remove("open"));
 document.addEventListener("keydown", ev => {
   if (ev.key === "Escape") $("lightbox").classList.remove("open");
+});
+
+// --- Journal (unconfirmed uploads) --------------------------------------
+function renderJournal() {
+  const bar = $("journalbar");
+  if (!bar) return;
+  const j = (state && state.journal) || [];
+  bar.innerHTML = "";
+  bar.className = j.length ? "show" : "";
+  for (const e of j) {
+    const row = document.createElement("div");
+    row.className = "jrow";
+    const when = e.ts ? new Date(e.ts * 1000).toLocaleString() : "";
+    const txt = document.createElement("span");
+    txt.textContent = "An upload (“" + (e.label || e.file || "untitled")
+      + "”, " + when + ") reached the TV but couldn't be confirmed in its "
+      + "artwork list, so new uploads are paused. Is the piece on the TV?";
+    row.appendChild(txt);
+    const b1 = document.createElement("button");
+    b1.textContent = "It's on the TV";
+    b1.addEventListener("click", () => resolveJournal(e, "found"));
+    const b2 = document.createElement("button");
+    b2.textContent = "Not there";
+    b2.addEventListener("click", () => resolveJournal(e, "missing"));
+    row.appendChild(b1); row.appendChild(b2);
+    bar.appendChild(row);
+  }
+}
+
+async function resolveJournal(e, action) {
+  try {
+    state = await api("/api/journal/resolve",
+                      { sha256: e.sha256, action });
+    render();
+    say(action === "found"
+        ? "Recorded — the piece is in your library now."
+        : "Cleared — you can upload it again.");
+  } catch (err) { say("Could not resolve: " + err.message); }
+}
+
+// --- Tabs -----------------------------------------------------------------
+let discLoaded = false, tvSetLoaded = false;
+function showView(v) {
+  $("zoneIn").style.display = v === "library" ? "" : "none";
+  $("zoneOut").style.display = v === "library" ? "" : "none";
+  $("zoneDiscover").style.display = v === "discover" ? "" : "none";
+  $("zoneTv").style.display = v === "tv" ? "" : "none";
+  $("tabLibrary").className = v === "library" ? "active" : "";
+  $("tabDiscover").className = v === "discover" ? "active" : "";
+  $("tabTv").className = v === "tv" ? "active" : "";
+  if (v === "discover" && !discLoaded) { discLoaded = true; loadDiscover(); }
+  if (v === "tv" && !tvSetLoaded) { tvSetLoaded = true; loadTvSettings(); }
+}
+$("tabLibrary").addEventListener("click", () => showView("library"));
+$("tabDiscover").addEventListener("click", () => showView("discover"));
+$("tabTv").addEventListener("click", () => showView("tv"));
+
+// --- Discover ---------------------------------------------------------------
+const SRC_NAMES = { met: "The Met", cma: "Cleveland", aic: "Chicago" };
+let discSource = "featured", discItems = [], discBusy = false;
+let discSavedKeys = new Set();
+const discKey = it => it.source + ":" + it.id;
+
+async function loadDiscover() {
+  if (discBusy) return; discBusy = true;
+  $("discGrid").innerHTML = "";
+  $("discEmpty").style.display = "block";
+  $("discEmpty").textContent = "Loading…";
+  try {
+    if (discSource === "saved") {
+      const r = await api("/api/discover/saved");
+      discItems = r.items || [];
+      discSavedKeys = new Set(discItems.map(discKey));
+    } else {
+      const q = $("discQuery").value.trim();
+      const [r, s] = await Promise.all([
+        api("/api/discover?source=" + discSource
+            + (q ? "&q=" + encodeURIComponent(q) : "")),
+        api("/api/discover/saved")]);
+      discItems = r.items || [];
+      discSavedKeys = new Set((s.items || []).map(discKey));
+    }
+    renderDiscover();
+  } catch (e) {
+    $("discEmpty").style.display = "block";
+    $("discEmpty").textContent = "Could not load the collection: " + e.message;
+  }
+  discBusy = false;
+}
+
+function renderDiscover() {
+  const grid = $("discGrid");
+  grid.innerHTML = "";
+  $("discCount").textContent = discItems.length
+      + (discItems.length === 1 ? " work" : " works");
+  $("discEmpty").style.display = discItems.length ? "none" : "block";
+  if (!discItems.length)
+    $("discEmpty").textContent = discSource === "saved"
+        ? "Nothing saved yet — tap Save on a piece to keep it here."
+        : "No works found. Try another search.";
+  for (const it of discItems) {
+    const card = document.createElement("div");
+    card.className = "card";
+    const img = document.createElement("img");
+    img.src = it.thumb_url; img.alt = it.title; img.loading = "lazy";
+    card.appendChild(img);
+    const zoom = document.createElement("button");
+    zoom.className = "zoom";
+    zoom.title = "Preview";
+    zoom.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg>';
+    zoom.addEventListener("click", ev => {
+      ev.stopPropagation();
+      $("lbImg").src = it.image_url;
+      $("lbCap").textContent = it.title
+          + (it.artist ? " — " + it.artist : "")
+          + (it.date ? " (" + it.date + ")" : "");
+      $("lightbox").classList.add("open");
+    });
+    card.appendChild(zoom);
+    if (it.badge) {
+      const b = document.createElement("span");
+      b.className = "badge"; b.textContent = it.badge;
+      card.appendChild(b);
+    }
+    const lbl = document.createElement("div");
+    lbl.className = "label"; lbl.textContent = it.title;
+    card.appendChild(lbl);
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = [it.artist, it.date].filter(Boolean).join(" · ");
+    card.appendChild(meta);
+    if (it.medium) {
+      const m2 = document.createElement("div");
+      m2.className = "meta"; m2.textContent = it.medium;
+      card.appendChild(m2);
+    }
+    const src = document.createElement("div");
+    src.className = "src";
+    src.textContent = SRC_NAMES[it.source] || it.source;
+    card.appendChild(src);
+    const row = document.createElement("div");
+    row.className = "row";
+    const send = document.createElement("button");
+    send.className = "primary"; send.textContent = "Send…";
+    send.addEventListener("click", ev => {
+      ev.stopPropagation(); openDiscoverEditor(it);
+    });
+    row.appendChild(send);
+    const save = document.createElement("button");
+    const has = discSavedKeys.has(discKey(it));
+    save.textContent = has ? "♥ Saved" : "♡ Save";
+    save.addEventListener("click", ev => {
+      ev.stopPropagation(); toggleSave(it);
+    });
+    row.appendChild(save);
+    card.appendChild(row);
+    grid.appendChild(card);
+  }
+}
+
+async function toggleSave(it) {
+  const has = discSavedKeys.has(discKey(it));
+  try {
+    const r = await api("/api/discover/save", { item: it, saved: !has });
+    discSavedKeys = new Set((r.items || []).map(discKey));
+    if (discSource === "saved") discItems = r.items || [];
+    renderDiscover();
+  } catch (e) { say("Save failed: " + e.message); }
+}
+
+function openDiscoverEditor(it) {
+  if (busy) return;
+  edQueue = [{ disc: it }]; edIdx = 0;
+  edUploaded = 0; edSkipped = 0; edPooled = 0;
+  $("edPool").checked = true;
+  busy = true; updateActions();
+  openEditor();
+}
+
+for (const b of $("discSources").querySelectorAll("button"))
+  b.addEventListener("click", () => {
+    discSource = b.dataset.src;
+    for (const x of $("discSources").querySelectorAll("button"))
+      x.className = x === b ? "active" : "";
+    loadDiscover();
+  });
+$("discGo").addEventListener("click", loadDiscover);
+$("discQuery").addEventListener("keydown", ev => {
+  if (ev.key === "Enter") loadDiscover();
+});
+
+// --- TV settings --------------------------------------------------------------
+let tvSetBusy = false;
+function settingsMap(s) {
+  const m = {};
+  const list = (s && s.get_artmode_settings) || [];
+  if (Array.isArray(list)) for (const e of list) m[e.item] = e;
+  if (s && s.get_brightness && !m.brightness) m.brightness = s.get_brightness;
+  if (s && s.get_color_temperature && !m.color_temperature)
+    m.color_temperature = s.get_color_temperature;
+  m.slideshow_status = { value: s && s.get_slideshow_status
+      ? s.get_slideshow_status.value : undefined };
+  m.auto_rotation_status = { value: s && s.get_auto_rotation_status
+      ? s.get_auto_rotation_status.value : undefined };
+  return m;
+}
+function fillTvSettings(s) {
+  const m = settingsMap(s);
+  const put = (id, valId, e) => {
+    if (e && e.value !== undefined && e.value !== null) {
+      $(id).value = e.value;
+      if (valId) $(valId).textContent = e.value;
+    }
+  };
+  put("setBrightness", "valBrightness", m.brightness);
+  put("setColorTemp", "valColorTemp", m.color_temperature);
+  put("setBrightnessSensor", null, m.brightness_sensor_setting);
+  put("setMotionSensitivity", null, m.motion_sensitivity);
+  put("setMotionTimer", null, m.motion_timer);
+  put("setSlideshow", null, m.slideshow_status);
+  put("setAutoRotation", null, m.auto_rotation_status);
+}
+async function loadTvSettings() {
+  $("tvSetStatus").textContent = "Loading…";
+  try {
+    const r = await api("/api/tvsettings");
+    fillTvSettings(r.settings);
+    $("tvSetStatus").textContent = "";
+  } catch (e) {
+    $("tvSetStatus").textContent = "Could not read them: " + e.message;
+  }
+}
+async function applyTvSetting(key, value) {
+  if (tvSetBusy) return; tvSetBusy = true;
+  $("tvSetNote").textContent = "Applying…";
+  try {
+    const body = {}; body[key] = value;
+    const r = await api("/api/tvsettings", body);
+    fillTvSettings(r.settings);
+    const errs = r.errors || {};
+    $("tvSetNote").textContent = errs[key]
+        ? "The TV refused that change (" + errs[key]
+          + "). The values shown are what the TV reports now."
+        : "Saved to the TV.";
+  } catch (e) {
+    $("tvSetNote").textContent = "Could not apply: " + e.message;
+  }
+  tvSetBusy = false;
+}
+$("setBrightness").addEventListener("input", ev => {
+  $("valBrightness").textContent = ev.target.value;
+});
+$("setBrightness").addEventListener("change", ev => {
+  applyTvSetting("brightness", Number(ev.target.value));
+});
+$("setColorTemp").addEventListener("input", ev => {
+  $("valColorTemp").textContent = ev.target.value;
+});
+$("setColorTemp").addEventListener("change", ev => {
+  applyTvSetting("color_temperature", Number(ev.target.value));
+});
+$("setBrightnessSensor").addEventListener("change", ev => {
+  applyTvSetting("brightness_sensor_setting", ev.target.value);
+});
+$("setMotionSensitivity").addEventListener("change", ev => {
+  applyTvSetting("motion_sensitivity", ev.target.value);
+});
+$("setMotionTimer").addEventListener("change", ev => {
+  applyTvSetting("motion_timer", ev.target.value);
+});
+$("setSlideshow").addEventListener("change", ev => {
+  applyTvSetting("slideshow_status", ev.target.value);
+});
+$("setAutoRotation").addEventListener("change", ev => {
+  applyTvSetting("auto_rotation_status", ev.target.value);
 });
 
 load();
