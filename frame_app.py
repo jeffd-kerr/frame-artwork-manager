@@ -589,7 +589,9 @@ def _aic_card(it, iiif):
             "medium": it.get("medium_display") or "",
             "thumb_url": "%s/%s/full/400,/0/default.jpg" % (iiif, iid),
             "image_url": "%s/%s/full/1200,/0/default.jpg" % (iiif, iid),
-            "send_url": "%s/%s/full/3840,/0/default.jpg" % (iiif, iid),
+            # AIC's IIIF server refuses widths above 1686 with a 403
+            # (verified Nov 23, 2026) — 1686 is the largest sendable size.
+            "send_url": "%s/%s/full/1686,/0/default.jpg" % (iiif, iid),
             "width": None, "height": None, "badge": ""}
 
 def discover_aic(q, limit=24):
@@ -672,7 +674,14 @@ def discover_image_bytes(source, oid):
     card = discover_resolve(source, oid)
     if not card:
         raise RuntimeError("That work could not be found.")
-    data = _http_bytes(card["send_url"])
+    try:
+        data = _http_bytes(card["send_url"])
+    except Exception:
+        # A museum can refuse its largest size for a particular work;
+        # fall back to the ordinary image size before giving up.
+        if card.get("image_url") == card.get("send_url"):
+            raise
+        data = _http_bytes(card["image_url"])
     with open(path, "wb") as f:
         f.write(data)
     return data
