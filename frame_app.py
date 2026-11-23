@@ -521,13 +521,16 @@ def discover_met(q, limit=24):
     # under v1.1 while object records remain on v1.
     url = "%s/search?hasImages=true&isPublicDomain=true&q=%s" % (
         MET_SEARCH_API, quote(q or "landscape"))
-    ids = (_http_json(url).get("objectIDs") or [])[:limit]
+    # The v1.1 search's public-domain flag does not match the object
+    # records (top hits can be non-PD with no image), so over-fetch and
+    # keep the first `limit` cards that check out against the records.
+    ids = (_http_json(url).get("objectIDs") or [])[:80]
     def one(oid):
         try:
             return _met_card(_met_object(oid))
         except Exception:
             return None
-    return [c for c in _pool_map(one, ids) if c]
+    return [c for c in _pool_map(one, ids) if c][:limit]
 
 def discover_cma(q, limit=24):
     url = "%s/?has_image=1&cc0=1&limit=%d&q=%s" % (
