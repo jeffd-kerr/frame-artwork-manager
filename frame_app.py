@@ -286,15 +286,25 @@ async def _tv_op(op, arg):
                     ("motion_sensitivity", "set_motion_sensitivity", str),
                     ("motion_timer", "set_motion_timer", str),
                     ("brightness_sensor_setting",
-                     "set_brightness_sensor_setting", str),
-                    ("slideshow_status", "set_slideshow_status", str),
-                    ("auto_rotation_status",
-                     "set_auto_rotation_status", str)]
+                     "set_brightness_sensor_setting", str)]
             for key, method, conv in spec:
                 if key not in (arg or {}):
                     continue
                 try:
                     await getattr(art, method)(conv(arg[key]))
+                except Exception as e:
+                    errors[key] = str(e) or repr(e)
+            # The TV's own slideshow takes a duration in minutes
+            # (0 = off), not an on/off string; "slideshow" and
+            # "auto_rotation" are two firmware names for it.
+            for key in ("slideshow_status", "auto_rotation_status"):
+                if key not in (arg or {}):
+                    continue
+                v = str(arg[key])
+                try:
+                    dur = 0 if v in ("off", "0", "") else int(v)
+                    await getattr(art, "set_" + key)(
+                        duration=dur, type=True, category=2)
                 except Exception as e:
                     errors[key] = str(e) or repr(e)
             return {"errors": errors}

@@ -276,15 +276,14 @@
       <div class="setrow"><span class="k">TV's own slideshow</span>
         <select id="setSlideshow">
           <option value="off">Off — this app rotates the art</option>
-          <option value="on">On</option>
+          <option value="1">Change every 1 minute</option>
+          <option value="3">Change every 3 minutes</option>
+          <option value="5">Change every 5 minutes</option>
+          <option value="10">Change every 10 minutes</option>
+          <option value="15">Change every 15 minutes</option>
+          <option value="30">Change every 30 minutes</option>
         </select>
-        <span class="hint">Some Frame models refuse to change this from an app; if yours does, the app's rotation keeps working regardless.</span></div>
-      <div class="setrow"><span class="k">Auto-rotation (portrait pieces)</span>
-        <select id="setAutoRotation">
-          <option value="off">Off</option>
-          <option value="on">On</option>
-        </select>
-        <span class="hint">The TV's automatic rotation for portrait-mounted art.</span></div>
+        <span class="hint">The slideshow built into the TV, shuffling everything on it. Some Frame models refuse to change this from an app; if yours does, the app's rotation keeps working regardless.</span></div>
     </div>
     <div class="discnote" id="tvSetNote">Changes apply to the TV as soon as you make them.</div>
   </section>
@@ -1147,7 +1146,6 @@ function fillTvSettings(s) {
   put("setMotionSensitivity", null, m.motion_sensitivity);
   put("setMotionTimer", null, m.motion_timer);
   put("setSlideshow", null, m.slideshow_status);
-  put("setAutoRotation", null, m.auto_rotation_status);
 }
 async function loadTvSettings() {
   $("tvSetStatus").textContent = "Loading…";
@@ -1199,9 +1197,6 @@ $("setMotionTimer").addEventListener("change", ev => {
 });
 $("setSlideshow").addEventListener("change", ev => {
   applyTvSetting("slideshow_status", ev.target.value);
-});
-$("setAutoRotation").addEventListener("change", ev => {
-  applyTvSetting("auto_rotation_status", ev.target.value);
 });
 
 load();
