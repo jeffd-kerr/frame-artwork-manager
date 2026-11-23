@@ -461,6 +461,8 @@ def backfill_hashes():
 
 UA = {"User-Agent": "FrameArtworkManager/1.1 (personal artwork browser)"}
 MET_API = "https://collectionapi.metmuseum.org/public/collection/v1"
+MET_SEARCH_API = ("https://collectionapi.metmuseum.org"
+                  "/public/collection/v1.1")
 CMA_API = "https://openaccess-api.clevelandart.org/api/artworks"
 AIC_API = "https://api.artic.edu/api/v1/artworks"
 _met_cache = {}
@@ -515,8 +517,10 @@ def _met_card(o):
             "width": None, "height": None, "badge": ""}
 
 def discover_met(q, limit=24):
+    # The Met retired the v1 search endpoint (410 Gone); search lives
+    # under v1.1 while object records remain on v1.
     url = "%s/search?hasImages=true&isPublicDomain=true&q=%s" % (
-        MET_API, quote(q or "landscape"))
+        MET_SEARCH_API, quote(q or "landscape"))
     ids = (_http_json(url).get("objectIDs") or [])[:limit]
     def one(oid):
         try:
