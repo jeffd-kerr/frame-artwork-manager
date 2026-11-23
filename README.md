@@ -34,6 +34,22 @@ always-on machine) and gives you one page for all of it.
   slideshow* in the upload editor to keep one out.
 - **Labels** — click a piece's name to rename it. Unlabeled pieces show
   as *Untitled*.
+- **Discover museum artwork** — a Discover tab browses and searches
+  open-access works from The Met, the Cleveland Museum of Art and the
+  Art Institute of Chicago (no accounts or keys), with a mixed Featured
+  view and a Saved shortlist. Preview a piece, then send it to the TV
+  through the same framing editor as uploads.
+- **TV settings** — a settings tab reads and changes the TV's own Art
+  Mode settings where the firmware allows: brightness, color
+  temperature, the brightness (ambient light) sensor, motion sensor
+  sensitivity and timer, and the TV's built-in slideshow. Changes the
+  TV refuses are reported, never hidden.
+- **Upload integrity** — every framed upload is hashed; sending the
+  identical image again (same framing) is skipped while the piece is
+  still on the TV. Each upload is verified against the TV's artwork
+  list before it is recorded, and one that cannot be confirmed appears
+  in a notice at the top of the page and pauses further uploads until
+  you resolve it.
 - **Delete with a safety net** — deleting asks for confirmation and is
   permanent on the TV. Each card shows whether a local backup copy
   exists.
